@@ -1,0 +1,3 @@
+[submodule "libclef"]
+	path = libclef
+	url = https://github.com/ahigerd/libclef
