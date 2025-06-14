@@ -3,6 +3,33 @@
 #include "infochunk.h"
 #include <stdexcept>
 #include <cassert>
+#include <sstream>
+
+static std::string formatBoundsException(int base, int offset, int size, int limit)
+{
+  std::ostringstream ss;
+  ss << "file range out of bounds: ";
+  if (base >= 0) {
+    ss << base << " + ";
+  } else {
+    base = 0;
+  }
+  ss << offset << " + " << size << " (0x" << std::hex << (base + offset + size) << std::dec;
+  ss << ") exceeds " << limit << " (0x" << std::hex << limit << std::dec << ")";
+  return ss.str();
+}
+
+FileBoundsException::FileBoundsException(int base, int offset, int size, int limit)
+: std::range_error(formatBoundsException(base, offset, size, limit))
+{
+  // initializers only
+}
+
+FileBoundsException::FileBoundsException(int offset, int size, int limit)
+: std::range_error(formatBoundsException(-1, offset, size, limit))
+{
+  // initializers only
+}
 
 NWFile::NWFile(std::istream& is)
 : parent(nullptr), strings(stringStore)
@@ -37,10 +64,11 @@ NWFile::NWFile(std::istream& is)
         std::cout << "embedded file";
       }
       std::cout << ": main=" << file.mainSize << " audio=" << file.audioSize << std::endl;
+      /*
       for (auto pos : file.positions) {
         auto group = info->groupEntries[pos.group];
         auto item = group.items[pos.index];
-        std::cout << "\tgroup=" << group.name << " index=" << pos.index << " main pos=" << (group.fileOffset + item.fileOffset) << " size=" << item.fileSize << " audio pos=" << (group.audioOffset + item.audioOffset) << " size=" << item.audioSize << std::endl;
+        std::cout << "\t" << pos.group << " group=" << group.name << " " << item.fileIndex << " index=" << pos.index << " main pos=" << (group.fileOffset + item.fileOffset) << " size=" << item.fileSize << " audio pos=" << (group.audioOffset + item.audioOffset) << " size=" << item.audioSize << std::endl;
         if (file.mainSize != item.fileSize || file.audioSize != item.audioSize) {
           std::cout << "\t\tXXX: Size mismatch" << std::endl;
         }
@@ -48,7 +76,10 @@ NWFile::NWFile(std::istream& is)
         auto audio = getFile(pos.group, pos.index, true);
         std::cout << "\t\t" << main.size() << "\t" << audio.size() << std::endl;
       }
+      */
     }
+    auto test = getFile(0, 0, false);
+    std::cout << test.size() << " [" << std::string((char*)test.data(), 4) << "]" << std::endl;
   } else if (magic == 'FSAR' || magic == 'CSAR') {
     parseSTRG(section('STRG'));
   }
@@ -256,8 +287,17 @@ std::vector<std::uint8_t> NWFile::getFile(int group, int index, bool audio) cons
     return std::vector<std::uint8_t>();
   }
   auto item = entry.items.at(index);
-  int offset = audio ? entry.audioOffset + item.audioOffset : entry.fileOffset + item.fileOffset;
   NWFile* fileSection = section('FILE');
-  auto start = fileSection->rawData.begin() + offset;
-  return std::vector<std::uint8_t>(start, start + (audio ? item.audioSize : item.fileSize));
+  int base = (audio ? entry.audioOffset : entry.fileOffset) - int(fileSection->fileStartPos + 0xC);
+  int offset = audio ? item.audioOffset : item.fileOffset;
+  int size = audio ? item.audioSize : item.fileSize;
+  int maxSize = audio ? entry.audioSize : entry.fileSize;
+  if (offset + size > maxSize) {
+    throw FileBoundsException(offset, size, maxSize);
+  }
+  if (base + offset + size > fileSection->rawData.size()) {
+    throw FileBoundsException(base, offset, size, fileSection->rawData.size());
+  }
+  auto start = fileSection->rawData.begin() + base + offset;
+  return std::vector<std::uint8_t>(start, start + size);
 }

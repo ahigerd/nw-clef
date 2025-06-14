@@ -7,10 +7,23 @@
 #include <map>
 #include <memory>
 #include <vector>
+#include <stdexcept>
 #include "dataref.h"
 #include "infochunk.h"
 
 class InfoChunk;
+
+class FileBoundsException : public std::range_error
+{
+public:
+  FileBoundsException(int base, int offset, int size, int limit);
+  FileBoundsException(int offset, int size, int limit);
+
+  int base;
+  int offset;
+  int size;
+  int limit;
+};
 
 class NWFile
 {
