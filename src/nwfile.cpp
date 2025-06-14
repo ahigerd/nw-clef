@@ -1,9 +1,11 @@
 #include "nwfile.h"
 #include "utility.h"
+#include "infochunk.h"
 #include <stdexcept>
+#include <cassert>
 
 NWFile::NWFile(std::istream& is)
-: parentMagic(0)
+: parent(nullptr), strings(stringStore)
 {
   fileStartPos = is.tellg();
 
@@ -26,43 +28,35 @@ NWFile::NWFile(std::istream& is)
   readHeader(is);
 
   if (magic == 'RSAR') {
-    parseSYMB(sections.at('SYMB').get());
-    NWFile* info = sections.at('INFO').get();
-    std::uint32_t tableOffset = info->parseU32(12);
-    int numFiles = info->parseU32(tableOffset);
-    std::cout << numFiles << std::endl;
-    tableOffset += 4;
-    std::cout << "start @ 0x" << std::hex << int(info->fileStartPos) << std::dec << std::endl;
-    for (int i = 0; i < numFiles; i++) {
-      DataRef fileOffset = info->parseDataRef(tableOffset);
-      std::cout << "offset: " << fileOffset.isOffset << " 0x" << std::hex << fileOffset.pointer << std::dec << std::endl;
-      std::uint32_t mainSize = info->parseU32(fileOffset.pointer);
-      std::uint32_t audioSize = info->parseU32(fileOffset.pointer + 4);
-      DataRef nameRef = info->parseDataRef(fileOffset.pointer + 8);
-      if (nameRef) {
-        std::cout << "name ref: " << nameRef.isOffset << " 0x" << std::hex << nameRef.pointer << std::dec;
-        if (!nameRef.isOffset) {
-          std::cout << ": " << strings[nameRef.pointer];
-        }
-        std::cout << std::endl;
+    parseSYMB(section('SYMB'));
+    info.reset(new InfoChunk(section('INFO')));
+    for (auto file : info->fileEntries) {
+      if (file.name.size()) {
+        std::cout << "file " << file.name;
       } else {
-        std::cout << "embedded" << std::endl;
+        std::cout << "embedded file";
       }
-      DataRef groupsRef = info->parseDataRef(fileOffset.pointer + 20);
-      if (groupsRef) {
-        std::cout << "groups ref: " << groupsRef.isOffset << " 0x" << std::hex << groupsRef.pointer << std::dec;
-        std::cout << std::endl;
+      std::cout << ": main=" << file.mainSize << " audio=" << file.audioSize << std::endl;
+      for (auto pos : file.positions) {
+        auto group = info->groupEntries[pos.group];
+        auto item = group.items[pos.index];
+        std::cout << "\tgroup=" << group.name << " index=" << pos.index << " main pos=" << (group.fileOffset + item.fileOffset) << " size=" << item.fileSize << " audio pos=" << (group.audioOffset + item.audioOffset) << " size=" << item.audioSize << std::endl;
+        if (file.mainSize != item.fileSize || file.audioSize != item.audioSize) {
+          std::cout << "\t\tXXX: Size mismatch" << std::endl;
+        }
+        auto main = getFile(pos.group, pos.index, false);
+        auto audio = getFile(pos.group, pos.index, true);
+        std::cout << "\t\t" << main.size() << "\t" << audio.size() << std::endl;
       }
-      tableOffset += 8;
     }
   } else if (magic == 'FSAR' || magic == 'CSAR') {
-    parseSTRG(sections.at('STRG').get());
+    parseSTRG(section('STRG'));
   }
 
 }
 
-NWFile::NWFile(std::istream& is, std::uint32_t parentMagic, bool isLittleEndian)
-: parentMagic(parentMagic), isLittleEndian(isLittleEndian)
+NWFile::NWFile(std::istream& is, NWFile* parent)
+: parent(parent), isLittleEndian(parent->isLittleEndian), strings(parent->strings)
 {
   fileStartPos = is.tellg();
 
@@ -108,7 +102,7 @@ void NWFile::readHeader(std::istream& is)
   case 'STRG':
   case 'FILE':
     fileSize = readU32(is) - 8;
-    if (parentMagic == 'RSAR' && magic == 'FILE') {
+    if (parent && parent->magic == 'RSAR' && magic == 'FILE') {
       is.ignore(4);
       fileSize -= 4;
     }
@@ -179,7 +173,7 @@ void NWFile::readSections(std::istream& is, bool hasRefID, int sectionCount)
     if (!is) {
       throw std::runtime_error("section offset out of bounds");
     }
-    std::unique_ptr<NWFile> section(new NWFile(is, magic, isLittleEndian));
+    std::unique_ptr<NWFile> section(new NWFile(is, this));
     std::swap(sections[section->magic], section);
   }
 }
@@ -197,7 +191,7 @@ void NWFile::parseSTRG(NWFile* strg)
       str.pop_back();
     }
     strings.push_back(str);
-    std::cout << str << std::endl;
+    //std::cout << str << std::endl;
     offset += 12;
   }
 }
@@ -211,6 +205,59 @@ void NWFile::parseSYMB(NWFile* symb)
     std::uint8_t* stringPos = symb->rawData.data() + symb->parseU32(offset);
     std::string str(reinterpret_cast<char*>(stringPos));
     strings.push_back(str);
-    std::cout << str << std::endl;
+    //std::cout << str << std::endl;
   }
+}
+
+std::string NWFile::string(int index) const
+{
+  if (index < 0 || index >= strings.size()) {
+    return std::string();
+  }
+  return strings.at(index);
+}
+
+NWFile* NWFile::section(std::uint32_t key) const
+{
+  auto iter = sections.find(key);
+  if (iter == sections.end()) {
+    return nullptr;
+  }
+  return iter->second.get();
+}
+
+std::vector<std::uint8_t> NWFile::getFile(int index, bool audio) const
+{
+  if (parent) {
+    return parent->getFile(index, audio);
+  }
+  if (index < 0 || index >= info->fileEntries.size()) {
+    return std::vector<std::uint8_t>();
+  }
+  auto entry = info->fileEntries.at(index);
+  if (entry.positions.size()) {
+    auto pos = entry.positions.at(0);
+    return getFile(pos.group, pos.index, audio);
+  }
+  // TODO: external
+  return std::vector<std::uint8_t>();
+}
+
+std::vector<std::uint8_t> NWFile::getFile(int group, int index, bool audio) const
+{
+  if (parent) {
+    return parent->getFile(group, index, audio);
+  }
+  if (group < 0 || index < 0 || group >= info->groupEntries.size()) {
+    return std::vector<std::uint8_t>();
+  }
+  auto entry = info->groupEntries.at(group);
+  if (index >= entry.items.size()) {
+    return std::vector<std::uint8_t>();
+  }
+  auto item = entry.items.at(index);
+  int offset = audio ? entry.audioOffset + item.audioOffset : entry.fileOffset + item.fileOffset;
+  NWFile* fileSection = section('FILE');
+  auto start = fileSection->rawData.begin() + offset;
+  return std::vector<std::uint8_t>(start, start + (audio ? item.audioSize : item.fileSize));
 }
