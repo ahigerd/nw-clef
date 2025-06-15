@@ -6,6 +6,7 @@
 struct DataRef
 {
   bool isOffset;
+  std::uint8_t dataType;
   std::uint32_t pointer;
 
   inline operator bool() const { return pointer; }

@@ -15,7 +15,7 @@ static void readTable(NWFile* file, int base, std::vector<T>& table)
 }
 
 SoundDataEntry::SoundDataEntry(NWFile* file, int offset)
-: nameIndex(file->parseU32(offset)),
+: name(file->string(file->parseU32(offset))),
   fileIndex(file->parseU32(offset + 0x4)),
   playerId(file->parseU32(offset + 0x8)),
   volume(file->rawData[offset + 0x14]),
@@ -36,27 +36,37 @@ SoundDataEntry::SoundDataEntry(NWFile* file, int offset)
 
   std::uint32_t dataRef = file->parseDataRef(offset + 0x18).pointer;
   if (soundType == SoundType::SEQ) {
-    seqData.labelEntry = file->parseU32(offset + dataRef);
-    seqData.bankIndex = file->parseU32(offset + dataRef + 4);
-    seqData.allocTrack = file->parseU32(offset + dataRef + 8);
-    seqData.channelPriority = file->rawData[offset + dataRef + 12];
-    seqData.fixFlag = file->rawData[offset + dataRef + 13];
+    seqData.labelEntry = file->parseU32(dataRef);
+    seqData.bankIndex = file->parseS32(dataRef + 4);
+    seqData.trackMask = file->parseU32(dataRef + 8);
+    seqData.channelPriority = file->rawData[dataRef + 12];
+    seqData.fixFlag = file->rawData[dataRef + 13];
   } else if (soundType == SoundType::STRM) {
-    strmData.startPos = file->parseU32(offset + dataRef);
-    strmData.channelCount = file->parseU16(offset + dataRef + 4);
-    strmData.trackFlags = file->parseU16(offset + dataRef + 6);
+    strmData.startPos = file->parseU32(dataRef);
+    strmData.channelCount = file->parseU16(dataRef + 4);
+    strmData.trackFlags = file->parseU16(dataRef + 6);
   } else if (soundType == SoundType::WAVE) {
-    waveData.waveIndex = file->parseU32(offset + dataRef);
-    waveData.allocTrack = file->parseU32(offset + dataRef + 4);
-    waveData.channelPriority = file->rawData[offset + dataRef + 8];
-    waveData.fixFlag = file->rawData[offset + dataRef + 9];
+    waveData.waveIndex = file->parseU32(dataRef);
+    waveData.trackMask = file->parseU32(dataRef + 4);
+    waveData.channelPriority = file->rawData[dataRef + 8];
+    waveData.fixFlag = file->rawData[dataRef + 9];
+  } else {
+    throw std::exception();
   }
 }
 
 SoundBankEntry::SoundBankEntry(NWFile* file, int offset)
 : name(file->string(file->parseU32(offset))),
   fileIndex(file->parseU32(offset + 4)),
-  bankIndex(file->parseU32(offset + 8))
+  bankIndex(file->parseS32(offset + 8))
+{
+  // initializers only
+}
+
+PlayerEntry::PlayerEntry(NWFile* file, int offset)
+: name(file->string(file->parseU32(offset))),
+  soundCount(file->rawData[offset + 4]),
+  heapSize(file->parseU32(offset + 8))
 {
   // initializers only
 }
@@ -112,6 +122,7 @@ InfoChunk::InfoChunk(NWFile* file)
   }
   readTable(file, file->parseDataRef(0x00).pointer, soundDataEntries);
   readTable(file, file->parseDataRef(0x08).pointer, soundBankEntries);
+  readTable(file, file->parseDataRef(0x10).pointer, playerEntries);
   readTable(file, file->parseDataRef(0x18).pointer, fileEntries);
   readTable(file, file->parseDataRef(0x20).pointer, groupEntries);
 }

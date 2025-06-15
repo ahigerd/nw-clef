@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <cassert>
 #include <sstream>
+#include <fstream>
 
 static std::string formatBoundsException(int base, int offset, int size, int limit)
 {
@@ -57,6 +58,7 @@ NWFile::NWFile(std::istream& is)
   if (magic == 'RSAR') {
     parseSYMB(section('SYMB'));
     info.reset(new InfoChunk(section('INFO')));
+#if 0
     for (auto file : info->fileEntries) {
       if (file.name.size()) {
         std::cout << "file " << file.name;
@@ -78,8 +80,28 @@ NWFile::NWFile(std::istream& is)
       }
       */
     }
+#endif
     auto test = getFile(0, 0, false);
-    std::cout << test.size() << " [" << std::string((char*)test.data(), 4) << "]" << std::endl;
+    std::string tt;
+    test >> tt;
+    std::cout << test.size() << " [" << tt.substr(0, 4) << "]" << std::endl;
+    for (auto sound : info->soundDataEntries) {
+      if (sound.soundType == SoundType::SEQ) {
+        auto bank = info->soundBankEntries.at(sound.seqData.bankIndex);
+        test = getFile(sound.fileIndex, false);
+        test >> tt;
+        std::cout << sound.name << "\t" << bank.name << "\t" << tt.substr(0, 4) << "\t" << test.size() << std::endl;
+      } else {
+        FileEntry f = info->fileEntries[sound.fileIndex];
+        test = getFile(sound.fileIndex, false);
+        std::cout << sound.name << "\t" << f.name << "\t" << test.size() << std::endl;
+      }
+    }
+    /*
+    for (auto bank : info->soundBankEntries) {
+      std::cout << bank.name << "\t" << bank.fileIndex << "\t" << bank.bankIndex << std::endl;
+    }
+    */
   } else if (magic == 'FSAR' || magic == 'CSAR') {
     parseSTRG(section('STRG'));
   }
@@ -179,6 +201,7 @@ DataRef NWFile::parseDataRef(int offset) const
 {
   DataRef ref;
   ref.isOffset = rawData[offset];
+  ref.dataType = rawData[offset + 1];
   ref.pointer = parseS32(offset + 4);
   return ref;
 }
@@ -257,38 +280,40 @@ NWFile* NWFile::section(std::uint32_t key) const
   return iter->second.get();
 }
 
-std::vector<std::uint8_t> NWFile::getFile(int index, bool audio) const
+viewstream NWFile::getFile(int index, bool audio) const
 {
   if (parent) {
     return parent->getFile(index, audio);
   }
   if (index < 0 || index >= info->fileEntries.size()) {
-    return std::vector<std::uint8_t>();
+    return viewstream();
   }
   auto entry = info->fileEntries.at(index);
   if (entry.positions.size()) {
     auto pos = entry.positions.at(0);
     return getFile(pos.group, pos.index, audio);
   }
-  // TODO: external
-  return std::vector<std::uint8_t>();
+
+  // External file
+  std::unique_ptr<std::istream> f(new std::ifstream(entry.name, std::ios::in | std::ios::binary));
+  return viewstream(std::move(f));
 }
 
-std::vector<std::uint8_t> NWFile::getFile(int group, int index, bool audio) const
+viewstream NWFile::getFile(int group, int index, bool audio) const
 {
   if (parent) {
     return parent->getFile(group, index, audio);
   }
   if (group < 0 || index < 0 || group >= info->groupEntries.size()) {
-    return std::vector<std::uint8_t>();
+    return viewstream();
   }
   auto entry = info->groupEntries.at(group);
   if (index >= entry.items.size()) {
-    return std::vector<std::uint8_t>();
+    return viewstream();
   }
   auto item = entry.items.at(index);
   NWFile* fileSection = section('FILE');
-  int base = (audio ? entry.audioOffset : entry.fileOffset) - int(fileSection->fileStartPos + 0xC);
+  int base = (audio ? entry.audioOffset : entry.fileOffset) - int(fileSection->fileStartPos) - 0xC;
   int offset = audio ? item.audioOffset : item.fileOffset;
   int size = audio ? item.audioSize : item.fileSize;
   int maxSize = audio ? entry.audioSize : entry.fileSize;
@@ -298,6 +323,6 @@ std::vector<std::uint8_t> NWFile::getFile(int group, int index, bool audio) cons
   if (base + offset + size > fileSection->rawData.size()) {
     throw FileBoundsException(base, offset, size, fileSection->rawData.size());
   }
-  auto start = fileSection->rawData.begin() + base + offset;
-  return std::vector<std::uint8_t>(start, start + size);
+  auto start = fileSection->rawData.data() + base + offset;
+  return viewstream(start, start + size);
 }

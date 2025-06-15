@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include "dataref.h"
 #include "infochunk.h"
+#include "viewstream.h"
 
 class InfoChunk;
 
@@ -41,8 +42,8 @@ public:
 
   NWFile* section(std::uint32_t key) const;
   std::string string(int index) const;
-  std::vector<std::uint8_t> getFile(int index, bool audio) const;
-  std::vector<std::uint8_t> getFile(int group, int index, bool audio) const;
+  viewstream getFile(int index, bool audio) const;
+  viewstream getFile(int group, int index, bool audio) const;
 
   std::uint16_t parseU16(int offset) const;
   std::uint32_t parseU32(int offset) const;

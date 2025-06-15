@@ -54,8 +54,8 @@ public:
 
   struct SeqData {
     std::uint32_t labelEntry;
-    std::uint32_t bankIndex;
-    std::uint32_t allocTrack;
+    std::int32_t bankIndex;
+    std::uint32_t trackMask;
     std::uint8_t channelPriority;
     std::uint8_t fixFlag;
   };
@@ -68,14 +68,14 @@ public:
 
   struct WaveData {
     std::uint32_t waveIndex;
-    std::uint32_t allocTrack;
+    std::uint32_t trackMask;
     std::uint8_t channelPriority;
     std::uint8_t fixFlag;
   };
 
   SoundDataEntry(NWFile* file, int offset);
 
-  std::uint32_t nameIndex;
+  std::string name;
   std::uint32_t fileIndex;
   std::uint32_t playerId;
   Sound3D sound3D;
@@ -102,7 +102,17 @@ public:
 
   std::string name;
   std::uint32_t fileIndex;
-  std::uint32_t bankIndex;
+  std::int32_t bankIndex;
+};
+
+class PlayerEntry
+{
+public:
+  PlayerEntry(NWFile* file, int offset);
+
+  std::string name;
+  std::uint8_t soundCount;
+  std::uint32_t heapSize;
 };
 
 class FileEntry
@@ -157,6 +167,7 @@ public:
 
   std::vector<SoundDataEntry> soundDataEntries;
   std::vector<SoundBankEntry> soundBankEntries;
+  std::vector<PlayerEntry> playerEntries;
   std::vector<FileEntry> fileEntries;
   std::vector<GroupEntry> groupEntries;
 
