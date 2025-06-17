@@ -1,5 +1,8 @@
 #include "nwchunk.h"
 #include "nwfile.h"
+#include "sarfile.h"
+#include "rseqfile.h"
+#include "lablchunk.h"
 #include "infochunk.h"
 #include "utility.h"
 #include <map>
@@ -21,11 +24,12 @@ public:
 };
 
 static NWChunkLoader loaders[] = {
-  { 'RSAR', 0, NWChunkLoader::load<NWFile> },
-  { 'RSEQ', 0, NWChunkLoader::load<NWFile> },
-  { 'FSAR', 0, NWChunkLoader::load<NWFile> },
-  { 'CSAR', 0, NWChunkLoader::load<NWFile> },
+  { 'RSAR', 0, NWChunkLoader::load<RSARFile> },
+  { 'FSAR', 0, NWChunkLoader::load<FSARFile> },
+  { 'CSAR', 0, NWChunkLoader::load<CSARFile> },
+  { 'RSEQ', 0, NWChunkLoader::load<RSEQFile> },
   { 'INFO', 'RSAR', NWChunkLoader::load<InfoChunk> },
+  { 'LABL', 'RSEQ', NWChunkLoader::load<LablChunk> },
 };
 
 static std::uint32_t readMagic(std::istream& is)

@@ -1,16 +1,16 @@
 #include "clefcontext.h"
 #include "riffwriter.h"
 #include "synth/synthcontext.h"
-#include "nwfile.h"
+#include "sarfile.h"
 #include <fstream>
 
 int main(int argc, char** argv)
 {
   std::ifstream is(argv[1]);
-  NWFile& nw = *NWChunk::load<NWFile>(is);
-  for (auto sound : nw.info->soundDataEntries) {
+  std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is));
+  for (auto sound : nw->info->soundDataEntries) {
     if (sound.name == "SEQ_BGM_YUKI_V") {
-      auto seqFile = nw.getFile(sound.fileIndex, false);
+      auto seqFile = nw->getFile(sound.fileIndex, false);
       std::vector<uint8_t> buffer(0x20);
       seqFile.read((char*)buffer.data(), 0x20);
       seqFile.seekg(0);

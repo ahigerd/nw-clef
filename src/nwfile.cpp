@@ -4,7 +4,6 @@
 #include <stdexcept>
 #include <cassert>
 #include <sstream>
-#include <fstream>
 
 static std::string formatBoundsException(int base, int offset, int size, int limit)
 {
@@ -33,8 +32,12 @@ FileBoundsException::FileBoundsException(int offset, int size, int limit)
 }
 
 NWFile::NWFile(std::istream& is, const NWChunk::ChunkInit& init)
-: NWChunk(is, init)
+: NWChunk(is, init), version(0)
 {
+  // initializers only
+}
+
+#if 0
   readHeader(is);
 
   if (magic == 'RSAR') {
@@ -42,7 +45,6 @@ NWFile::NWFile(std::istream& is, const NWChunk::ChunkInit& init)
     //info.reset(new InfoChunk(section('INFO')));
     info = dynamic_cast<InfoChunk*>(section('INFO'));
     info->parse();
-#if 0
     for (auto file : info->fileEntries) {
       if (file.name.size()) {
         std::cout << "file " << file.name;
@@ -64,7 +66,6 @@ NWFile::NWFile(std::istream& is, const NWChunk::ChunkInit& init)
       }
       */
     }
-#endif
     auto test = getFile(0, 0, false);
     std::string tt;
     test >> tt;
@@ -89,46 +90,37 @@ NWFile::NWFile(std::istream& is, const NWChunk::ChunkInit& init)
   } else if (magic == 'FSAR' || magic == 'CSAR') {
     parseSTRG(section('STRG'));
   }
+}
+#endif
 
+void NWFile::readRHeader(std::istream& is)
+{
+  version = readU16(is);
+  is.ignore(6); // file size, header size
+  std::uint32_t sectionCount = readU16(is);
+  readSections(is, false, sectionCount);
 }
 
-void NWFile::readHeader(std::istream& is)
+void NWFile::readFHeader(std::istream& is)
 {
-  std::uint32_t fileSize, headerSize;
-  std::uint16_t sectionCount;
+  is.ignore(2); // header size
+  version = readU32(is);
+  is.ignore(4); // file size
+  std::uint32_t sectionCount = readU16(is);
+  readSections(is, true, sectionCount);
+}
 
-  switch (magic) {
-  case 'RSAR':
-  case 'RSEQ':
-    version = readU16(is);
-    fileSize = readU32(is);
-    headerSize = readU16(is);
-    sectionCount = readU16(is);
-    readSections(is, false, sectionCount);
-    break;
-  case 'FSAR':
-    headerSize = readU16(is);
-    version = readU32(is);
-    fileSize = readU32(is);
-    sectionCount = readU16(is);
-    is.ignore(2);
-    readSections(is, true, sectionCount);
-    break;
-  case 'CSAR':
-    headerSize = readU16(is);
-    version = readU32(is);
-    fileSize = readU32(is);
-    sectionCount = readU32(is);
-    readSections(is, true, sectionCount);
-  default:
-    throw std::runtime_error("unrecognized file format");
-    break;
-  }
+void NWFile::readCHeader(std::istream& is)
+{
+  is.ignore(2); // header size
+  version = readU32(is);
+  is.ignore(4); // header size
+  std::uint32_t sectionCount = readU16(is);
+  readSections(is, true, sectionCount);
 }
 
 void NWFile::readSections(std::istream& is, bool hasRefID, int sectionCount)
 {
-  std::cerr << "readSections " << sectionCount << " " << int(is.tellg()) << std::endl;
   if (sectionCount == 0) {
     return;
   }
@@ -157,37 +149,6 @@ void NWFile::readSections(std::istream& is, bool hasRefID, int sectionCount)
   }
 }
 
-void NWFile::parseSTRG(NWChunk* strg)
-{
-  std::uint32_t offset = strg->parseU32(4);
-  int numStrings = strg->parseU32(offset);
-  offset += 4;
-  for (int i = 0; i < numStrings; i++) {
-    int stringPos = strg->parseU32(offset + 4) + 16;
-    int stringSize = strg->parseU32(offset + 8);
-    std::string str = strg->parseString(stringPos, stringSize);
-    if (str[stringSize - 1] == '\0') {
-      str.pop_back();
-    }
-    strings.push_back(str);
-    //std::cout << str << std::endl;
-    offset += 12;
-  }
-}
-
-void NWFile::parseSYMB(NWChunk* symb)
-{
-  std::uint32_t offset = symb->parseU32(0);
-  int numStrings = symb->parseU32(offset);
-  for (int i = 0; i < numStrings; i++) {
-    offset += 4;
-    std::uint32_t stringPos = symb->parseU32(offset);
-    std::string str = symb->parseCString(stringPos);
-    strings.push_back(str);
-    //std::cout << str << std::endl;
-  }
-}
-
 std::string NWFile::string(int index) const
 {
   if (index < 0 || index >= strings.size()) {
@@ -207,41 +168,16 @@ NWChunk* NWFile::section(std::uint32_t key) const
 
 viewstream NWFile::getFile(int index, bool audio) const
 {
-  if (index < 0 || index >= info->fileEntries.size()) {
-    return viewstream();
+  if (parent) {
+    return parent->getFile(index, audio);
   }
-  auto entry = info->fileEntries.at(index);
-  if (entry.positions.size()) {
-    auto pos = entry.positions.at(0);
-    return getFile(pos.group, pos.index, audio);
-  }
-
-  // External file
-  std::unique_ptr<std::istream> f(new std::ifstream(entry.name, std::ios::in | std::ios::binary));
-  return viewstream(std::move(f));
+  return viewstream();
 }
 
 viewstream NWFile::getFile(int group, int index, bool audio) const
 {
-  if (group < 0 || index < 0 || group >= info->groupEntries.size()) {
-    return viewstream();
+  if (parent) {
+    return parent->getFile(group, index, audio);
   }
-  auto entry = info->groupEntries.at(group);
-  if (index >= entry.items.size()) {
-    return viewstream();
-  }
-  auto item = entry.items.at(index);
-  NWChunk* fileSection = section('FILE');
-  int base = (audio ? entry.audioOffset : entry.fileOffset) - int(fileSection->fileStartPos) - 0xC;
-  int offset = audio ? item.audioOffset : item.fileOffset;
-  int size = audio ? item.audioSize : item.fileSize;
-  int maxSize = audio ? entry.audioSize : entry.fileSize;
-  if (offset + size > maxSize) {
-    throw FileBoundsException(offset, size, maxSize);
-  }
-  if (base + offset + size > fileSection->rawData.size()) {
-    throw FileBoundsException(base, offset, size, fileSection->rawData.size());
-  }
-  auto start = fileSection->rawData.data() + base + offset;
-  return viewstream(start, start + size);
+  return viewstream();
 }

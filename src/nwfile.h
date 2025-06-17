@@ -29,21 +29,29 @@ protected:
   NWFile(std::istream& is, const ChunkInit& init);
 
 public:
-  std::vector<std::string> strings;
-  InfoChunk* info;
+  std::uint32_t version;
 
   NWChunk* section(std::uint32_t key) const;
+  template <typename T>
+  T* section(std::uint32_t key) const
+  {
+    return dynamic_cast<T*>(section(key));
+  }
+
   std::string string(int index) const override;
-  viewstream getFile(int index, bool audio) const;
-  viewstream getFile(int group, int index, bool audio) const;
+  virtual viewstream getFile(int index, bool audio) const;
+  virtual viewstream getFile(int group, int index, bool audio) const;
+
+protected:
+  void readRHeader(std::istream& is);
+  void readFHeader(std::istream& is);
+  void readCHeader(std::istream& is);
+
+  std::vector<std::string> strings;
 
 private:
-  void readHeader(std::istream& is);
   void readSections(std::istream& is, bool hasRefID, int sectionCount);
-  void parseSTRG(NWChunk* strg);
-  void parseSYMB(NWChunk* symb);
 
-  std::vector<std::string> stringStore;
   std::map<std::uint32_t, std::unique_ptr<NWChunk>> sections;
 };
 
