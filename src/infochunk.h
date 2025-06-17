@@ -1,11 +1,7 @@
 #ifndef NW_INFOCHUNK_H
 #define NW_INFOCHUNK_H
 
-#include "dataref.h"
-#include <vector>
-#include <string>
-
-class NWFile;
+#include "nwchunk.h"
 
 namespace _SoundType {
 enum SoundType
@@ -73,7 +69,7 @@ public:
     std::uint8_t fixFlag;
   };
 
-  SoundDataEntry(NWFile* file, int offset);
+  SoundDataEntry(NWChunk* file, int offset);
 
   std::string name;
   std::uint32_t fileIndex;
@@ -98,7 +94,7 @@ public:
 class SoundBankEntry
 {
 public:
-  SoundBankEntry(NWFile* file, int offset);
+  SoundBankEntry(NWChunk* file, int offset);
 
   std::string name;
   std::uint32_t fileIndex;
@@ -108,7 +104,7 @@ public:
 class PlayerEntry
 {
 public:
-  PlayerEntry(NWFile* file, int offset);
+  PlayerEntry(NWChunk* file, int offset);
 
   std::string name;
   std::uint8_t soundCount;
@@ -118,7 +114,7 @@ public:
 class FileEntry
 {
 public:
-  FileEntry(NWFile* file, int offset);
+  FileEntry(NWChunk* file, int offset);
 
   std::uint32_t mainSize;
   std::uint32_t audioSize;
@@ -126,7 +122,7 @@ public:
   std::string name;
 
   struct Position {
-    Position(NWFile* file, int offset);
+    Position(NWChunk* file, int offset);
     std::uint32_t group;
     std::uint32_t index;
   };
@@ -136,7 +132,7 @@ public:
 class GroupEntry
 {
 public:
-  GroupEntry(NWFile* file, int offset);
+  GroupEntry(NWChunk* file, int offset);
 
   std::string name;
   std::uint32_t entryNumber;
@@ -149,7 +145,7 @@ public:
   class GroupItem
   {
   public:
-    GroupItem(NWFile* file, int offset);
+    GroupItem(NWChunk* file, int offset);
 
     std::uint32_t fileIndex;
     std::uint32_t fileOffset;
@@ -160,19 +156,21 @@ public:
   std::vector<GroupItem> items;
 };
 
-class InfoChunk
+class InfoChunk : public NWChunk
 {
+  friend class NWChunkLoader;
+
+protected:
+  InfoChunk(std::istream& is, const ChunkInit& init);
+
 public:
-  InfoChunk(NWFile* file);
+  void parse();
 
   std::vector<SoundDataEntry> soundDataEntries;
   std::vector<SoundBankEntry> soundBankEntries;
   std::vector<PlayerEntry> playerEntries;
   std::vector<FileEntry> fileEntries;
   std::vector<GroupEntry> groupEntries;
-
-private:
-  NWFile* file;
 };
 
 #endif

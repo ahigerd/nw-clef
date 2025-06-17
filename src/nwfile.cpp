@@ -32,32 +32,16 @@ FileBoundsException::FileBoundsException(int offset, int size, int limit)
   // initializers only
 }
 
-NWFile::NWFile(std::istream& is)
-: parent(nullptr), strings(stringStore)
+NWFile::NWFile(std::istream& is, const NWChunk::ChunkInit& init)
+: NWChunk(is, init)
 {
-  fileStartPos = is.tellg();
-
-  char buffer[5];
-  buffer[4] = '\0';
-  is.read(buffer, 4);
-  magic = parseMagic(buffer, 0);
-  std::cerr << "Read magic " << buffer << std::endl;
-
-  int bom1 = is.get();
-  int bom2 = is.get();
-  if (bom1 == 0xFF && bom2 == 0xFE) {
-    isLittleEndian = true;
-  } else if (bom1 == 0xFE && bom2 == 0xFF) {
-    isLittleEndian = false;
-  } else {
-    throw std::runtime_error("unrecognized file format");
-  }
-
   readHeader(is);
 
   if (magic == 'RSAR') {
     parseSYMB(section('SYMB'));
-    info.reset(new InfoChunk(section('INFO')));
+    //info.reset(new InfoChunk(section('INFO')));
+    info = dynamic_cast<InfoChunk*>(section('INFO'));
+    info->parse();
 #if 0
     for (auto file : info->fileEntries) {
       if (file.name.size()) {
@@ -108,20 +92,6 @@ NWFile::NWFile(std::istream& is)
 
 }
 
-NWFile::NWFile(std::istream& is, NWFile* parent)
-: parent(parent), isLittleEndian(parent->isLittleEndian), strings(parent->strings)
-{
-  fileStartPos = is.tellg();
-
-  char buffer[5];
-  buffer[4] = '\0';
-  is.read(buffer, 4);
-  magic = parseMagic(buffer, 0);
-  std::cerr << "Read magic " << buffer << std::endl;
-
-  readHeader(is);
-}
-
 void NWFile::readHeader(std::istream& is)
 {
   std::uint32_t fileSize, headerSize;
@@ -150,64 +120,19 @@ void NWFile::readHeader(std::istream& is)
     fileSize = readU32(is);
     sectionCount = readU32(is);
     readSections(is, true, sectionCount);
-  case 'SYMB':
-  case 'INFO':
-  case 'STRG':
-  case 'FILE':
-    fileSize = readU32(is) - 8;
-    if (parent && parent->magic == 'RSAR' && magic == 'FILE') {
-      is.ignore(4);
-      fileSize -= 4;
-    }
-    rawData.resize(fileSize);
-    is.read(reinterpret_cast<char*>(rawData.data()), fileSize);
-    break;
   default:
     throw std::runtime_error("unrecognized file format");
     break;
   }
 }
 
-std::uint16_t NWFile::readU16(std::istream& is) const
-{
-  char buffer[2];
-  is.read(buffer, 2);
-  return parseInt<std::uint16_t>(isLittleEndian, buffer, 0);
-}
-
-std::uint32_t NWFile::readU32(std::istream& is) const
-{
-  char buffer[4];
-  is.read(buffer, 4);
-  return parseInt<std::uint32_t>(isLittleEndian, buffer, 0);
-}
-
-std::uint16_t NWFile::parseU16(int offset) const
-{
-  return parseInt<std::uint16_t>(isLittleEndian, rawData, offset);
-}
-
-std::uint32_t NWFile::parseU32(int offset) const
-{
-  return parseInt<std::uint32_t>(isLittleEndian, rawData, offset);
-}
-
-std::int32_t NWFile::parseS32(int offset) const
-{
-  return parseInt<std::int32_t>(isLittleEndian, rawData, offset);
-}
-
-DataRef NWFile::parseDataRef(int offset) const
-{
-  DataRef ref;
-  ref.isOffset = rawData[offset];
-  ref.dataType = rawData[offset + 1];
-  ref.pointer = parseS32(offset + 4);
-  return ref;
-}
-
 void NWFile::readSections(std::istream& is, bool hasRefID, int sectionCount)
 {
+  std::cerr << "readSections " << sectionCount << " " << int(is.tellg()) << std::endl;
+  if (sectionCount == 0) {
+    return;
+  }
+
   std::vector<std::streamoff> locators;
   for (int i = 0; i < sectionCount; i++) {
     if (hasRefID) {
@@ -227,12 +152,12 @@ void NWFile::readSections(std::istream& is, bool hasRefID, int sectionCount)
     if (!is) {
       throw std::runtime_error("section offset out of bounds");
     }
-    std::unique_ptr<NWFile> section(new NWFile(is, this));
+    std::unique_ptr<NWChunk> section(NWChunk::load(is, this));
     std::swap(sections[section->magic], section);
   }
 }
 
-void NWFile::parseSTRG(NWFile* strg)
+void NWFile::parseSTRG(NWChunk* strg)
 {
   std::uint32_t offset = strg->parseU32(4);
   int numStrings = strg->parseU32(offset);
@@ -240,7 +165,7 @@ void NWFile::parseSTRG(NWFile* strg)
   for (int i = 0; i < numStrings; i++) {
     int stringPos = strg->parseU32(offset + 4) + 16;
     int stringSize = strg->parseU32(offset + 8);
-    std::string str(strg->rawData.begin() + stringPos, strg->rawData.begin() + stringPos + stringSize);
+    std::string str = strg->parseString(stringPos, stringSize);
     if (str[stringSize - 1] == '\0') {
       str.pop_back();
     }
@@ -250,14 +175,14 @@ void NWFile::parseSTRG(NWFile* strg)
   }
 }
 
-void NWFile::parseSYMB(NWFile* symb)
+void NWFile::parseSYMB(NWChunk* symb)
 {
   std::uint32_t offset = symb->parseU32(0);
   int numStrings = symb->parseU32(offset);
   for (int i = 0; i < numStrings; i++) {
     offset += 4;
-    std::uint8_t* stringPos = symb->rawData.data() + symb->parseU32(offset);
-    std::string str(reinterpret_cast<char*>(stringPos));
+    std::uint32_t stringPos = symb->parseU32(offset);
+    std::string str = symb->parseCString(stringPos);
     strings.push_back(str);
     //std::cout << str << std::endl;
   }
@@ -271,7 +196,7 @@ std::string NWFile::string(int index) const
   return strings.at(index);
 }
 
-NWFile* NWFile::section(std::uint32_t key) const
+NWChunk* NWFile::section(std::uint32_t key) const
 {
   auto iter = sections.find(key);
   if (iter == sections.end()) {
@@ -282,9 +207,6 @@ NWFile* NWFile::section(std::uint32_t key) const
 
 viewstream NWFile::getFile(int index, bool audio) const
 {
-  if (parent) {
-    return parent->getFile(index, audio);
-  }
   if (index < 0 || index >= info->fileEntries.size()) {
     return viewstream();
   }
@@ -301,9 +223,6 @@ viewstream NWFile::getFile(int index, bool audio) const
 
 viewstream NWFile::getFile(int group, int index, bool audio) const
 {
-  if (parent) {
-    return parent->getFile(group, index, audio);
-  }
   if (group < 0 || index < 0 || group >= info->groupEntries.size()) {
     return viewstream();
   }
@@ -312,7 +231,7 @@ viewstream NWFile::getFile(int group, int index, bool audio) const
     return viewstream();
   }
   auto item = entry.items.at(index);
-  NWFile* fileSection = section('FILE');
+  NWChunk* fileSection = section('FILE');
   int base = (audio ? entry.audioOffset : entry.fileOffset) - int(fileSection->fileStartPos) - 0xC;
   int offset = audio ? item.audioOffset : item.fileOffset;
   int size = audio ? item.audioSize : item.fileSize;

@@ -1,0 +1,66 @@
+#ifndef NW_NWCHUNK_H
+#define NW_NWCHUNK_H
+
+#include <iostream>
+#include <cstdint>
+#include <vector>
+#include <string>
+#include "viewstream.h"
+#include "dataref.h"
+
+class NWFile;
+
+class NWChunk
+{
+  friend class NWChunkLoader;
+
+protected:
+  struct ChunkInit {
+    std::streampos fileStartPos;
+    std::uint32_t magic;
+    NWFile* parent;
+  };
+  NWChunk(std::istream& is, const ChunkInit& init);
+
+  const NWFile* parent;
+  std::uint32_t version;
+  bool isLittleEndian;
+
+  std::uint16_t readU16(std::istream& is) const;
+  std::uint32_t readU32(std::istream& is) const;
+
+public:
+  static NWChunk* load(std::istream& is, NWFile* parent = nullptr);
+
+  template <typename T>
+  static T* load(std::istream& is, NWFile* parent = nullptr)
+  {
+    NWChunk* chunk = load(is, parent);
+    T* cast = dynamic_cast<T*>(chunk);
+    if (cast) {
+      return cast;
+    }
+    delete chunk;
+    throw std::runtime_error("load returned wrong chunk type");
+  }
+
+  virtual ~NWChunk() {}
+
+  const std::streampos fileStartPos;
+  const std::uint32_t magic;
+  std::vector<std::uint8_t> rawData;
+
+  std::uint8_t parseU8(int offset) const;
+  std::int8_t parseS8(int offset) const;
+  std::uint16_t parseU16(int offset) const;
+  std::uint32_t parseU32(int offset) const;
+  std::int32_t parseS32(int offset) const;
+  std::string parseCString(int offset) const;
+  std::string parseLPString(int offset) const;
+  std::string parseString(int offset, int length) const;
+  DataRef parseDataRef(int offset) const;
+
+  virtual std::string string(int index) const;
+};
+
+#endif
