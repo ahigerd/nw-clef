@@ -1,7 +1,7 @@
 #include "lablchunk.h"
 #include <iostream>
 
-static void hexdump(const std::vector<uint8_t>& buffer, int limit)
+void hexdump(const std::vector<uint8_t>& buffer, int limit)
 {
   int size = buffer.size();
   int offset = 0;

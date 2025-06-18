@@ -53,12 +53,25 @@ public:
   std::uint8_t parseU8(int offset) const;
   std::int8_t parseS8(int offset) const;
   std::uint16_t parseU16(int offset) const;
+  std::int16_t parseS16(int offset) const;
   std::uint32_t parseU32(int offset) const;
   std::int32_t parseS32(int offset) const;
   std::string parseCString(int offset) const;
   std::string parseLPString(int offset) const;
   std::string parseString(int offset, int length) const;
   DataRef parseDataRef(int offset) const;
+
+  template <typename T>
+  void readDataRefTable(int base, std::vector<T>& table)
+  {
+    int n = parseU32(base);
+    base += 4;
+    DataRef ref;
+    for (int i = 0; i < n; i++, base += 8) {
+      ref = parseDataRef(base);
+      table.emplace_back(this, ref.pointer);
+    }
+  }
 
   virtual std::string string(int index) const;
 };

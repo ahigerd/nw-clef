@@ -114,6 +114,11 @@ std::uint16_t NWChunk::parseU16(int offset) const
   return parseInt<std::uint16_t>(isLittleEndian, rawData, offset);
 }
 
+std::int16_t NWChunk::parseS16(int offset) const
+{
+  return parseInt<std::int16_t>(isLittleEndian, rawData, offset);
+}
+
 std::uint32_t NWChunk::parseU32(int offset) const
 {
   return parseInt<std::uint32_t>(isLittleEndian, rawData, offset);

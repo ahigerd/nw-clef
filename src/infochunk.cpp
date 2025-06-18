@@ -2,18 +2,6 @@
 #include "nwchunk.h"
 #include <iostream>
 
-template <typename T>
-static void readTable(NWChunk* file, int base, std::vector<T>& table)
-{
-  int n = file->parseU32(base);
-  base += 4;
-  DataRef ref;
-  for (int i = 0; i < n; i++, base += 8) {
-    ref = file->parseDataRef(base);
-    table.emplace_back(file, ref.pointer);
-  }
-}
-
 SoundDataEntry::SoundDataEntry(NWChunk* file, int offset)
 : name(file->string(file->parseU32(offset))),
   fileIndex(file->parseU32(offset + 0x4)),
@@ -81,7 +69,7 @@ FileEntry::FileEntry(NWChunk* file, int offset)
     name = file->parseCString(nameRef.pointer);
   }
   auto locationStart = file->parseDataRef(offset + 0x14);
-  readTable(file, locationStart.pointer, positions);
+  file->readDataRefTable(locationStart.pointer, positions);
 }
 
 FileEntry::Position::Position(NWChunk* file, int offset)
@@ -101,7 +89,7 @@ GroupEntry::GroupEntry(NWChunk* file, int offset)
   audioSize(file->parseU32(offset + 0x1C))
 {
   auto itemsRef = file->parseDataRef(offset + 0x20);
-  readTable(file, itemsRef.pointer, items);
+  file->readDataRefTable(itemsRef.pointer, items);
 }
 
 GroupEntry::GroupItem::GroupItem(NWChunk* file, int offset)
@@ -122,9 +110,9 @@ InfoChunk::InfoChunk(std::istream& is, const NWChunk::ChunkInit& init)
 
 void InfoChunk::parse()
 {
-  readTable(this, parseDataRef(0x00).pointer, soundDataEntries);
-  readTable(this, parseDataRef(0x08).pointer, soundBankEntries);
-  readTable(this, parseDataRef(0x10).pointer, playerEntries);
-  readTable(this, parseDataRef(0x18).pointer, fileEntries);
-  readTable(this, parseDataRef(0x20).pointer, groupEntries);
+  readDataRefTable(parseDataRef(0x00).pointer, soundDataEntries);
+  readDataRefTable(parseDataRef(0x08).pointer, soundBankEntries);
+  readDataRefTable(parseDataRef(0x10).pointer, playerEntries);
+  readDataRefTable(parseDataRef(0x18).pointer, fileEntries);
+  readDataRefTable(parseDataRef(0x20).pointer, groupEntries);
 }
