@@ -19,8 +19,8 @@ protected:
   RSARFile(std::istream& is, const ChunkInit& init);
 
 public:
-  virtual viewstream getFile(int index, bool audio) const;
-  virtual viewstream getFile(int group, int index, bool audio) const;
+  virtual viewstream getFile(int index, bool audio) const override;
+  virtual viewstream getFile(int group, int index, bool audio) const override;
 
   InfoChunk* info;
 

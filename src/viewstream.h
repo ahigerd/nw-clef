@@ -3,6 +3,7 @@
 
 #include <istream>
 #include <streambuf>
+#include <vector>
 #include <cstdint>
 #include <memory>
 
@@ -28,6 +29,8 @@ class viewstream : public std::istream
 {
 public:
   viewstream();
+  inline viewstream(const std::vector<std::uint8_t>& buffer) : viewstream(&*buffer.begin(), &*buffer.end()) {}
+  inline viewstream(const std::vector<std::int8_t>& buffer) : viewstream(&*buffer.begin(), &*buffer.end()) {}
   viewstream(const std::uint8_t* start, const std::uint8_t* end);
   viewstream(const std::int8_t* start, const std::int8_t* end);
   viewstream(std::unique_ptr<std::istream> proxy);

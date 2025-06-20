@@ -4,11 +4,16 @@
 #include "seq/isequence.h"
 #include "sarfile.h"
 #include "rseqfile.h"
+#include "rbnkfile.h"
+#include "rwarfile.h"
 #include "lablchunk.h"
 #include <fstream>
 
+ClefContext clef;
+
+void hexdump(const std::vector<uint8_t>& buffer, int limit);
+
 int synth(RSEQFile* file, const std::string& name) {
-  ClefContext clef;
   SynthContext context(&clef, 44100, 2);
 
   ISequence* seq = file->sequence(&clef);
@@ -25,7 +30,8 @@ int synth(RSEQFile* file, const std::string& name) {
 int main(int argc, char** argv)
 {
   std::ifstream is(argv[1]);
-  std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is));
+  std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));
+  /*
   for (auto sound : nw->info->soundDataEntries) {
     if (sound.soundType == SoundType::SEQ && sound.name.substr(0, 3) == "SEQ") {
       std::cout << "=====================" << std::endl << sound.name << std::endl;
@@ -39,6 +45,22 @@ int main(int argc, char** argv)
 
       synth(seq, sound.name);
     }
+  }
+  */
+  for (auto bankEntry : nw->info->soundBankEntries) {
+    auto fileEntry = nw->info->fileEntries[bankEntry.fileIndex];
+    std::cout << bankEntry.name << " " << fileEntry.mainSize << " / " << fileEntry.audioSize << std::endl;
+    auto bankFile = nw->getFile(bankEntry.fileIndex, false);
+    std::unique_ptr<RBNKFile> bank(NWChunk::load<RBNKFile>(bankFile, nullptr, &clef));
+    auto audioFile = nw->getFile(bankEntry.fileIndex, true);
+    std::unique_ptr<RWARFile> war(NWChunk::load<RWARFile>(audioFile, nullptr, &clef));
+    int i = 0;
+    while (true) {
+      auto s = war->getSample(i);
+      if (!s) break;
+      ++i;
+    }
+    //bank->loadAudio(audioFile);
   }
   return 0;
 }

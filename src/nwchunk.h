@@ -9,6 +9,7 @@
 #include "dataref.h"
 
 class NWFile;
+class ClefContext;
 
 class NWChunk
 {
@@ -19,6 +20,7 @@ protected:
     std::streampos fileStartPos;
     std::uint32_t magic;
     NWFile* parent;
+    ClefContext* context;
   };
   NWChunk(std::istream& is, const ChunkInit& init);
 
@@ -30,12 +32,12 @@ protected:
   std::uint32_t readU32(std::istream& is) const;
 
 public:
-  static NWChunk* load(std::istream& is, NWFile* parent = nullptr);
+  static NWChunk* load(std::istream& is, NWFile* parent = nullptr, ClefContext* ctx = nullptr);
 
   template <typename T>
-  static T* load(std::istream& is, NWFile* parent = nullptr)
+  static T* load(std::istream& is, NWFile* parent = nullptr, ClefContext* ctx = nullptr)
   {
-    NWChunk* chunk = load(is, parent);
+    NWChunk* chunk = load(is, parent, ctx);
     T* cast = dynamic_cast<T*>(chunk);
     if (cast) {
       return cast;
@@ -46,6 +48,7 @@ public:
 
   virtual ~NWChunk() {}
 
+  ClefContext* ctx;
   const std::streampos fileStartPos;
   const std::uint32_t magic;
   std::vector<std::uint8_t> rawData;

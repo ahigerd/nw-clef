@@ -2,6 +2,9 @@
 #include "nwfile.h"
 #include "sarfile.h"
 #include "rseqfile.h"
+#include "rbnkfile.h"
+#include "rwarfile.h"
+#include "rwavfile.h"
 #include "lablchunk.h"
 #include "infochunk.h"
 #include "utility.h"
@@ -28,6 +31,9 @@ static NWChunkLoader loaders[] = {
   { 'FSAR', 0, NWChunkLoader::load<FSARFile> },
   { 'CSAR', 0, NWChunkLoader::load<CSARFile> },
   { 'RSEQ', 0, NWChunkLoader::load<RSEQFile> },
+  { 'RBNK', 0, NWChunkLoader::load<RBNKFile> },
+  { 'RWAR', 0, NWChunkLoader::load<RWARFile> },
+  { 'RWAV', 0, NWChunkLoader::load<RWAVFile> },
   { 'INFO', 'RSAR', NWChunkLoader::load<InfoChunk> },
   { 'LABL', 'RSEQ', NWChunkLoader::load<LablChunk> },
 };
@@ -41,12 +47,18 @@ static std::uint32_t readMagic(std::istream& is)
   return parseMagic(buffer, 0);
 }
 
-NWChunk* NWChunk::load(std::istream& is, NWFile* parent)
+NWChunk* NWChunk::load(std::istream& is, NWFile* parent, ClefContext* ctx)
 {
   std::streampos start = is.tellg();
   std::uint32_t magic = readMagic(is);
   std::uint32_t parentMagic = parent ? parent->magic : 0;
-  ChunkInit init{ start, magic, parent };
+  if (!ctx && parent) {
+    ctx = parent->ctx;
+  }
+  if (!ctx) {
+    throw std::runtime_error("no ctx");
+  }
+  ChunkInit init{ start, magic, parent, ctx };
 
   for (auto loader : loaders) {
     if (loader.key == magic && loader.parentKey == parentMagic) {
@@ -58,6 +70,7 @@ NWChunk* NWChunk::load(std::istream& is, NWFile* parent)
 
 NWChunk::NWChunk(std::istream& is, const NWChunk::ChunkInit& init)
 : parent(init.parent),
+  ctx(init.context),
   fileStartPos(init.fileStartPos),
   magic(init.magic)
 {
