@@ -7,6 +7,7 @@
 #include "rbnkfile.h"
 #include "rwarfile.h"
 #include "lablchunk.h"
+#include "riffwriter.h"
 #include <fstream>
 
 ClefContext clef;
@@ -48,19 +49,27 @@ int main(int argc, char** argv)
   }
   */
   for (auto bankEntry : nw->info->soundBankEntries) {
+    if (bankEntry.name != "BNK_SEQ_O_OPTION_CH") {
+      continue;
+    }
     auto fileEntry = nw->info->fileEntries[bankEntry.fileIndex];
     std::cout << bankEntry.name << " " << fileEntry.mainSize << " / " << fileEntry.audioSize << std::endl;
     auto bankFile = nw->getFile(bankEntry.fileIndex, false);
     std::unique_ptr<RBNKFile> bank(NWChunk::load<RBNKFile>(bankFile, nullptr, &clef));
     auto audioFile = nw->getFile(bankEntry.fileIndex, true);
     std::unique_ptr<RWARFile> war(NWChunk::load<RWARFile>(audioFile, nullptr, &clef));
-    int i = 0;
-    while (true) {
+    for (int i = 0; i < war->numSamples(); i++) {
       auto s = war->getSample(i);
-      if (!s) break;
-      ++i;
+      if (!s) continue;
+      RiffWriter riff(s->sampleRate, s->channels.size() > 1);
+      riff.open("out/" + bankEntry.name + "_" + std::to_string(i) + ".wav");
+      if (s->channels.size() > 1) {
+        riff.write(s->channels[0], s->channels[1]);
+      } else {
+        riff.write(s->channels[0]);
+      }
+      riff.close();
     }
-    //bank->loadAudio(audioFile);
   }
   return 0;
 }

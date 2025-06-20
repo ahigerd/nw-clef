@@ -48,12 +48,14 @@ SampleData* DspAdpcmCodec::decodeRange(std::vector<uint8_t>::const_iterator star
   return sample;
 }
 
-std::int16_t DspAdpcmCodec::getNextSample(std::int8_t state)
+std::int16_t DspAdpcmCodec::getNextSample(std::int32_t state)
 {
-  std::uint32_t c1 = coef1 * params.history[0];
-  std::uint32_t c2 = coef2 * params.history[1];
-  std::int16_t sample = clamp<std::int16_t>(((state * scale) << 11) + 1024 + c1 + c2, -0x8000, 0x7FFF);
+  std::int32_t c1 = coef1 * params.history[0];
+  std::int32_t c2 = coef2 * params.history[1];
+  std::int32_t sample = (state * scale) << 11;
+  sample = (sample + 1024 + c1 + c2) >> 11;
+  std::int16_t result = clamp<std::int16_t>(sample, -0x8000, 0x7FFF);
   params.history[1] = params.history[0];
-  params.history[0] = sample;
-  return sample * params.gain;
+  params.history[0] = result;
+  return result * params.gain;
 }

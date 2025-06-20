@@ -14,6 +14,7 @@ protected:
 
 public:
   virtual viewstream getFile(int index, bool audio) const override;
+  inline int numSamples() const { return entries.size(); }
   SampleData* getSample(int index);
 
 private:

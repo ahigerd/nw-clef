@@ -28,14 +28,14 @@ public:
   DataRef dataLocation;
 
   struct ADPCMInfo {
-    std::uint16_t coef[16];
-    std::uint16_t gain;
+    std::int16_t coef[16];
+    std::int16_t gain;
     std::uint16_t initialPred;
-    std::uint16_t history1;
-    std::uint16_t history2;
+    std::int16_t history1;
+    std::int16_t history2;
     std::uint16_t loopPred;
-    std::uint16_t loopHistory1;
-    std::uint16_t loopHistory2;
+    std::int16_t loopHistory1;
+    std::int16_t loopHistory2;
   };
 
   struct ChannelInfo {

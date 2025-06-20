@@ -27,13 +27,13 @@ RWAVFile::RWAVFile(std::istream& is, const ChunkInit& init)
       for (int j = 0; j < 16; j++) {
         adpcm.coef[j] = info->parseU16(adpcmOffset + j * 2);
       }
-      adpcm.gain = info->parseU16(adpcmOffset + 0x2C);
+      adpcm.gain = info->parseS16(adpcmOffset + 0x2C);
       adpcm.initialPred = info->parseU16(adpcmOffset + 0x2E);
-      adpcm.history1 = info->parseU16(adpcmOffset + 0x30);
-      adpcm.history2 = info->parseU16(adpcmOffset + 0x32);
+      adpcm.history1 = info->parseS16(adpcmOffset + 0x30);
+      adpcm.history2 = info->parseS16(adpcmOffset + 0x32);
       adpcm.loopPred = info->parseU16(adpcmOffset + 0x34);
-      adpcm.loopHistory1 = info->parseU16(adpcmOffset + 0x36);
-      adpcm.loopHistory2 = info->parseU16(adpcmOffset + 0x38);
+      adpcm.loopHistory1 = info->parseS16(adpcmOffset + 0x36);
+      adpcm.loopHistory2 = info->parseS16(adpcmOffset + 0x38);
     }
 
     channels.push_back({
@@ -61,7 +61,7 @@ SampleData* RWAVFile::sample(std::uint64_t sampleID)
         sampleRate,
         looped ? std::int32_t(loopStart) : -1,
         loopEnd,
-        ch.adpcm.gain / 65535.0f,
+        1.0f + (ch.adpcm.gain / 32767.0f),
         { ch.adpcm.history1, ch.adpcm.history2 },
       };
       for (int i = 0; i < 16; i++) {
@@ -69,7 +69,6 @@ SampleData* RWAVFile::sample(std::uint64_t sampleID)
       }
       DspAdpcmCodec codec(ctx, params);
       std::uint32_t dataLength = loopEnd / 2;
-      std::cout << ch.sampleOffset << " + " << dataLength << " / " << data->rawData.size() << std::endl;
       auto begin = data->rawData.begin() + ch.sampleOffset;
       decoded = codec.decodeRange(begin, begin + dataLength, setSampleID);
     } else {
