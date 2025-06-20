@@ -2,6 +2,7 @@
 #define NW_DATAREF_H
 
 #include <cstdint>
+#include <ostream>
 
 struct DataRef
 {
@@ -11,5 +12,10 @@ struct DataRef
 
   inline operator bool() const { return pointer; }
 };
+
+inline std::ostream& operator<<(std::ostream& os, const DataRef& ref)
+{
+  return os << std::hex << ref.isOffset << ":" << int(ref.dataType) << "(" << ref.pointer << std::dec << ")";
+}
 
 #endif

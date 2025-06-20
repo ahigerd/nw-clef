@@ -157,9 +157,11 @@ RSEQFile::RSEQFile(std::istream& is, const ChunkInit& init)
   readRHeader(is);
 
   NWChunk* data = section('DATA');
+#if 0
   for (auto label : section<LablChunk>('LABL')->labels) {
-    //std::cout << label.name << "\t" << (label.dataOffset) << std::endl;
+    std::cout << label.name << "\t" << (label.dataOffset) << std::endl;
   }
+#endif
   TrackParser(this, &tracks[0], data, data->parseU32(0) - 0xC);
 }
 
@@ -212,13 +214,6 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
   int loopCount = 0;
   for (int i = 0; i < len && loopCount < 2; i++) {
     const RSEQEvent& event = srcTrack->at(i);
-    /*
-    if (event.cmd < 0x80) {
-      std::cerr << event.offset << "\tnote  " << event.cmd << " " << event.param1 << " " << event.param2 << " " << event.param3 << std::endl;
-    } else {
-      std::cerr << event.offset << "\t" << magic_enum::enum_name(_RSEQCmd::RSEQCmdRefl(event.cmd)) << " " << event.param1 << " " << event.param2 << " " << event.param3 << std::endl;
-    }
-    */
     if (event.cmd == RSEQCmd::Goto) {
       int j = findOffset(srcTrack, event.param1);
       if (j < 0) {
@@ -301,7 +296,6 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
         SampleEvent* se = new SampleEvent;
         se->sampleID = sample->wave.pointer;
         se->pitchBend = fastExp(event.cmd - sample->baseNote + bend * bendRange, expPitch);
-        //std::cout << "note " << int(event.cmd) << " - " << int(sample->baseNote) << " + " << (bend * bendRange) << " -> " << se->pitchBend << ": " << se->sampleID << std::endl;
         e = se;
       } else {
         continue;
@@ -315,7 +309,6 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
       e->setEnvelope(attack, hold, decay, sustain, release);
       e->duration = event.param2 / ppqn / tempo * 60.0;
       e->pan = pan;
-      //std::cerr << timestamp << ": " << e->frequency << " " << e->volume << " " << e->duration << " " << event.param1 << " " << event.param2 << std::endl;
       if (noteWait) {
         timestamp += e->duration;
       }

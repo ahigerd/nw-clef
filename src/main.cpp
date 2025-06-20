@@ -12,9 +12,8 @@
 
 ClefContext clef;
 
-void hexdump(const std::vector<uint8_t>& buffer, int limit);
-
 int synth(RSEQFile* file, const std::string& name) {
+  clef.purgeSamples();
   SynthContext context(&clef, 44100, 2);
 
   ISequence* seq = file->sequence(&clef);
@@ -28,12 +27,30 @@ int synth(RSEQFile* file, const std::string& name) {
   return 0;
 }
 
+static bool testFilter(const std::string& filter, const std::string& name, bool glob)
+{
+  if (!filter.size()) return true;
+  if (glob) {
+    return name.substr(0, filter.size()) == filter;
+  }
+  return name == filter;
+}
+
 int main(int argc, char** argv)
 {
   std::ifstream is(argv[1]);
+  std::string filter;
+  bool glob = false;
+  if (argc > 2) {
+    filter = argv[2];
+    if (filter.size() && filter.back() == '*') {
+      glob = true;
+      filter = filter.substr(0, filter.size() - 1);
+    }
+  }
   std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));
   for (auto sound : nw->info->soundDataEntries) {
-    if (sound.soundType == SoundType::SEQ && sound.name/*.substr(0, 3)*/ == "SEQ_O_RANKING_CH") {
+    if (sound.soundType == SoundType::SEQ && testFilter(filter, sound.name, glob)) {
       std::cout << "=====================" << std::endl << sound.name << std::endl;
       auto seqFile = nw->getFile(sound.fileIndex, false);
       RSEQFile* seq = NWChunk::load<RSEQFile>(seqFile, nullptr, &clef);

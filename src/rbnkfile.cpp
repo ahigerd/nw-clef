@@ -1,6 +1,5 @@
 #include "rbnkfile.h"
-
-void hexdump(const std::vector<uint8_t>& buffer, int limit);
+#include "utility.h"
 
 RBNKFile::Sample::Sample(NWChunk* file, int offset)
 : attack(file->parseS8(offset + 4)),
@@ -33,15 +32,17 @@ RBNKFile::RBNKFile(std::istream& is, const NWChunk::ChunkInit& init)
   std::uint32_t numPrograms = data->parseU32(0) - 1;
   std::uint32_t offset = 4;
   for (int i = 0; i < numPrograms; i++, offset += 8) {
-    programs.push_back({ readKeySplits(data, data->parseDataRef(offset)) });
+    DataRef ref = data->parseDataRef(offset);
+    programs.push_back({ readKeySplits(data, ref) });
   }
-  std::cout << "Bank: " << programs.size() << " programs" << std::endl;
-  hexdump(data->rawData, data->rawData.size());
 }
 
 std::vector<RBNKFile::VelSplit> RBNKFile::readVelSplits(NWChunk* data, DataRef ref)
 {
   std::uint32_t offset = ref.pointer;
+  if (ref.dataType == 0 || ref.dataType > 3) {
+    return {};
+  }
   if (ref.dataType != 3) {
     return { VelSplit{ 0, 128, Sample(data, offset) } };
   }
@@ -64,7 +65,9 @@ std::vector<RBNKFile::VelSplit> RBNKFile::readVelSplits(NWChunk* data, DataRef r
 
 std::vector<RBNKFile::KeySplit> RBNKFile::readKeySplits(NWChunk* data, DataRef ref)
 {
-  if (ref.dataType != 2) {
+  if (ref.dataType == 0 || ref.dataType > 3) {
+    return {};
+  } else if (ref.dataType != 2) {
     return { KeySplit{ 0, 127, readVelSplits(data, ref) } };
   }
   std::uint32_t offset = ref.pointer;
@@ -78,10 +81,13 @@ std::vector<RBNKFile::KeySplit> RBNKFile::readKeySplits(NWChunk* data, DataRef r
     splits.push_back(split);
     minKey = split.maxKey + 1;
   }
+  if (offset & 0x3) {
+    offset = (offset | 0x3) + 1;
+  }
   for (int i = 0; i < numSplits; i++) {
     KeySplit& split = splits[i];
     DataRef ref2 = data->parseDataRef(offset);
-    split.velSplits = readVelSplits(data, ref);
+    split.velSplits = readVelSplits(data, ref2);
     offset += 8;
   }
   return splits;

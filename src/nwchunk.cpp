@@ -43,7 +43,7 @@ static std::uint32_t readMagic(std::istream& is)
   char buffer[5];
   buffer[4] = '\0';
   is.read(buffer, 4);
-  std::cerr << "Read magic " << buffer << std::endl;
+  //std::cerr << "Read magic " << buffer << std::endl;
   return parseMagic(buffer, 0);
 }
 

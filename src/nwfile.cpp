@@ -37,62 +37,6 @@ NWFile::NWFile(std::istream& is, const NWChunk::ChunkInit& init)
   // initializers only
 }
 
-#if 0
-  readHeader(is);
-
-  if (magic == 'RSAR') {
-    parseSYMB(section('SYMB'));
-    //info.reset(new InfoChunk(section('INFO')));
-    info = dynamic_cast<InfoChunk*>(section('INFO'));
-    info->parse();
-    for (auto file : info->fileEntries) {
-      if (file.name.size()) {
-        std::cout << "file " << file.name;
-      } else {
-        std::cout << "embedded file";
-      }
-      std::cout << ": main=" << file.mainSize << " audio=" << file.audioSize << std::endl;
-      /*
-      for (auto pos : file.positions) {
-        auto group = info->groupEntries[pos.group];
-        auto item = group.items[pos.index];
-        std::cout << "\t" << pos.group << " group=" << group.name << " " << item.fileIndex << " index=" << pos.index << " main pos=" << (group.fileOffset + item.fileOffset) << " size=" << item.fileSize << " audio pos=" << (group.audioOffset + item.audioOffset) << " size=" << item.audioSize << std::endl;
-        if (file.mainSize != item.fileSize || file.audioSize != item.audioSize) {
-          std::cout << "\t\tXXX: Size mismatch" << std::endl;
-        }
-        auto main = getFile(pos.group, pos.index, false);
-        auto audio = getFile(pos.group, pos.index, true);
-        std::cout << "\t\t" << main.size() << "\t" << audio.size() << std::endl;
-      }
-      */
-    }
-    auto test = getFile(0, 0, false);
-    std::string tt;
-    test >> tt;
-    std::cout << test.size() << " [" << tt.substr(0, 4) << "]" << std::endl;
-    for (auto sound : info->soundDataEntries) {
-      if (sound.soundType == SoundType::SEQ) {
-        auto bank = info->soundBankEntries.at(sound.seqData.bankIndex);
-        test = getFile(sound.fileIndex, false);
-        test >> tt;
-        std::cout << sound.name << "\t" << bank.name << "\t" << tt.substr(0, 4) << "\t" << test.size() << std::endl;
-      } else {
-        FileEntry f = info->fileEntries[sound.fileIndex];
-        test = getFile(sound.fileIndex, false);
-        std::cout << sound.name << "\t" << f.name << "\t" << test.size() << std::endl;
-      }
-    }
-    /*
-    for (auto bank : info->soundBankEntries) {
-      std::cout << bank.name << "\t" << bank.fileIndex << "\t" << bank.bankIndex << std::endl;
-    }
-    */
-  } else if (magic == 'FSAR' || magic == 'CSAR') {
-    parseSTRG(section('STRG'));
-  }
-}
-#endif
-
 void NWFile::readRHeader(std::istream& is)
 {
   version = readU16(is);
