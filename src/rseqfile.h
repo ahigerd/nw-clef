@@ -6,6 +6,8 @@
 class ClefContext;
 class ISequence;
 class ITrack;
+class RBNKFile;
+class RWARFile;
 
 namespace _RSEQCmd {
 enum RSEQCmd {
@@ -95,6 +97,8 @@ class RSEQFile : public NWFile
 public:
   std::string label(int index) const;
 
+  void loadBank(RBNKFile* bank, RWARFile* war);
+
   ISequence* sequence(ClefContext* ctx) const;
 
 protected:
@@ -121,6 +125,8 @@ private:
   double tempo;
   std::vector<RSEQTrack> tracks;
   std::map<std::uint32_t, RSEQTrack> subs;
+  RBNKFile* bank;
+  RWARFile* war;
 
   ITrack* createTrack(const RSEQTrack& src) const;
   static int findOffset(const RSEQTrack* src, std::uint32_t offset);

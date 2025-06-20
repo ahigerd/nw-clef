@@ -32,22 +32,27 @@ int main(int argc, char** argv)
 {
   std::ifstream is(argv[1]);
   std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));
-  /*
   for (auto sound : nw->info->soundDataEntries) {
-    if (sound.soundType == SoundType::SEQ && sound.name.substr(0, 3) == "SEQ") {
+    if (sound.soundType == SoundType::SEQ && sound.name/*.substr(0, 3)*/ == "SEQ_O_RANKING_CH") {
       std::cout << "=====================" << std::endl << sound.name << std::endl;
       auto seqFile = nw->getFile(sound.fileIndex, false);
-      RSEQFile* seq = NWChunk::load<RSEQFile>(seqFile);
+      RSEQFile* seq = NWChunk::load<RSEQFile>(seqFile, nullptr, &clef);
       std::string label = seq->label(sound.seqData.labelEntry);
       if (!label.size()) continue;
       std::cout << "Label: " << label << std::endl;
-      auto bank = nw->info->soundBankEntries[sound.seqData.bankIndex];
-      std::cout << "Bank:  " << bank.name << std::endl;
+      auto bankEntry = nw->info->soundBankEntries[sound.seqData.bankIndex];
+      std::cout << "Bank:  " << bankEntry.name << std::endl;
+
+      auto bankFile = nw->getFile(bankEntry.fileIndex, false);
+      std::unique_ptr<RBNKFile> bank(NWChunk::load<RBNKFile>(bankFile, nullptr, &clef));
+      auto audioFile = nw->getFile(bankEntry.fileIndex, true);
+      std::unique_ptr<RWARFile> war(NWChunk::load<RWARFile>(audioFile, nullptr, &clef));
+      seq->loadBank(bank.get(), war.get());
 
       synth(seq, sound.name);
     }
   }
-  */
+  /*
   for (auto bankEntry : nw->info->soundBankEntries) {
     if (bankEntry.name != "BNK_SEQ_O_OPTION_CH") {
       continue;
@@ -71,5 +76,6 @@ int main(int argc, char** argv)
       riff.close();
     }
   }
+  */
   return 0;
 }
