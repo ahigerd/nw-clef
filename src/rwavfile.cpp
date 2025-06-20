@@ -61,7 +61,7 @@ SampleData* RWAVFile::sample(std::uint64_t sampleID)
         sampleRate,
         looped ? std::int32_t(loopStart) : -1,
         loopEnd,
-        1.0f + (ch.adpcm.gain / 32767.0f),
+        1.0f, // + (ch.adpcm.gain / 32767.0f),
         { ch.adpcm.history1, ch.adpcm.history2 },
       };
       for (int i = 0; i < 16; i++) {

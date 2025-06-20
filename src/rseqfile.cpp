@@ -196,8 +196,6 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
   bool noteWait = true;
 
   int program = 0;
-  int baseNote = 0;
-  double basePitch = 440;
 
   BasicTrack* out = new BasicTrack();
   struct Frame {
@@ -298,24 +296,30 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
       if (!sd) {
         sd = war->getSample(sample->wave.pointer);
       }
+      BaseNoteEvent* e;
       if (sd) {
-        //OscillatorEvent* e = new OscillatorEvent;
-        //e->waveformID = oscID;
-        //e->frequency = noteToFreq(event.cmd + bend * bendRange);
-        SampleEvent* e = new SampleEvent;
-        e->sampleID = sample->wave.pointer;
-        e->pitchBend = fastExp(event.cmd - baseNote + bend * bendRange, expPitch);
-        e->timestamp = timestamp;
-        e->volume = volume * (event.param1 / 127.0);
-        e->setEnvelope(attack, hold, decay, sustain, release);
-        e->duration = event.param2 / ppqn / tempo * 60.0;
-        e->pan = pan;
-        //std::cerr << timestamp << ": " << e->frequency << " " << e->volume << " " << e->duration << " " << event.param1 << " " << event.param2 << std::endl;
-        if (noteWait) {
-          timestamp += e->duration;
-        }
-        out->addEvent(e);
+        SampleEvent* se = new SampleEvent;
+        se->sampleID = sample->wave.pointer;
+        se->pitchBend = fastExp(event.cmd - sample->baseNote + bend * bendRange, expPitch);
+        //std::cout << "note " << int(event.cmd) << " - " << int(sample->baseNote) << " + " << (bend * bendRange) << " -> " << se->pitchBend << ": " << se->sampleID << std::endl;
+        e = se;
+      } else {
+        continue;
+        OscillatorEvent* oe = new OscillatorEvent;
+        oe->waveformID = oscID;
+        oe->frequency = noteToFreq(event.cmd + bend * bendRange);
+        e = oe;
       }
+      e->timestamp = timestamp;
+      e->volume = volume * (event.param1 / 127.0);
+      e->setEnvelope(attack, hold, decay, sustain, release);
+      e->duration = event.param2 / ppqn / tempo * 60.0;
+      e->pan = pan;
+      //std::cerr << timestamp << ": " << e->frequency << " " << e->volume << " " << e->duration << " " << event.param1 << " " << event.param2 << std::endl;
+      if (noteWait) {
+        timestamp += e->duration;
+      }
+      out->addEvent(e);
     } else if (event.cmd == RSEQCmd::Rest) {
       timestamp += event.param1 / ppqn / tempo * 60.0;
     } else if (event.cmd >= 0xCA && event.cmd <= 0xE0) {

@@ -52,9 +52,10 @@ int main(int argc, char** argv)
       synth(seq, sound.name);
     }
   }
-  /*
+#if 0
   for (auto bankEntry : nw->info->soundBankEntries) {
-    if (bankEntry.name != "BNK_SEQ_O_OPTION_CH") {
+    std::cout << bankEntry.name << std::endl;
+    if (bankEntry.name != "BNK_SEQ_O_RANKING") {
       continue;
     }
     auto fileEntry = nw->info->fileEntries[bankEntry.fileIndex];
@@ -76,6 +77,6 @@ int main(int argc, char** argv)
       riff.close();
     }
   }
-  */
+#endif
   return 0;
 }

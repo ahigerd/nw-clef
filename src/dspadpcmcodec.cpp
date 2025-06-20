@@ -15,12 +15,18 @@ DspAdpcmCodec::DspAdpcmCodec(ClefContext* ctx, const DspAdpcmCodec::Params& para
   // initializers only
 }
 
+static inline std::uint32_t convertSampleCount(std::int32_t n)
+{
+  n = (n / 16 * 14) + (n % 16) - 2;
+  return (n < 0) ? 0 : n;
+}
+
 SampleData* DspAdpcmCodec::decodeRange(std::vector<uint8_t>::const_iterator start, std::vector<uint8_t>::const_iterator end, uint64_t sampleID)
 {
   SampleData* sample = new SampleData(context(), sampleID);
   sample->sampleRate = params.sampleRate;
-  sample->loopStart = ((params.loopStart << 3) + 16) / 7;
-  sample->loopEnd = ((params.loopEnd << 3) + 16) / 7;
+  sample->loopStart = convertSampleCount(params.loopStart);
+  sample->loopEnd = convertSampleCount(params.loopEnd);
   sample->channels.emplace_back();
   auto& buffer = sample->channels[0];
   buffer.reserve(sample->loopEnd);

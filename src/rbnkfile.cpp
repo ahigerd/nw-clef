@@ -33,7 +33,7 @@ RBNKFile::RBNKFile(std::istream& is, const NWChunk::ChunkInit& init)
   std::uint32_t numPrograms = data->parseU32(0) - 1;
   std::uint32_t offset = 4;
   for (int i = 0; i < numPrograms; i++, offset += 8) {
-    programs.push_back({ readKeySplits(data, ref) });
+    programs.push_back({ readKeySplits(data, data->parseDataRef(offset)) });
   }
   std::cout << "Bank: " << programs.size() << " programs" << std::endl;
   hexdump(data->rawData, data->rawData.size());
