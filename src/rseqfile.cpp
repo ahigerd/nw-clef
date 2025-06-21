@@ -5,6 +5,7 @@
 #include "clefcontext.h"
 #include "seq/isequence.h"
 #include "seq/itrack.h"
+#include "nwinstrument.h"
 #include "utility.h"
 #include <iostream>
 
@@ -191,13 +192,10 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
   double tempo = this->tempo;
   double ppqn = 48;
   double timestamp = 0;
-  double volume = 1.0, pan = 0.5;
-  double attack = .0015, hold = 0, decay = 0.1, sustain = 0.5, release = 0.01;
   double bend = 0, bendRange = 2;
-  int oscID = 0;
   bool noteWait = true;
 
-  int program = 0;
+  NWInstrument inst(bank, war);
 
   BasicTrack* out = new BasicTrack();
   struct Frame {
@@ -257,62 +255,43 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
     } else if (event.cmd == RSEQCmd::Tempo) {
       std::cerr << "Tempo: " << event.param1 << std::endl;
     } else if (event.cmd == RSEQCmd::Attack) {
-      attack = event.param1 / 127.0;
+      inst.attack = event.param1 / 127.0;
     } else if (event.cmd == RSEQCmd::Hold) {
-      hold = event.param1 / 127.0;
+      inst.hold = event.param1 / 127.0;
     } else if (event.cmd == RSEQCmd::Decay) {
-      decay = event.param1 / 127.0;
+      inst.decay = event.param1 / 127.0;
     } else if (event.cmd == RSEQCmd::Sustain) {
-      sustain = event.param1 / 127.0;
+      inst.sustain = event.param1 / 127.0;
     } else if (event.cmd == RSEQCmd::Release) {
-      release = event.param1 / 127.0;
+      inst.release = event.param1 / 127.0;
     } else if (event.cmd == RSEQCmd::Volume) {
-      volume = event.param1 / 127.0;
+      inst.volume = event.param1 / 127.0;
     } else if (event.cmd == RSEQCmd::Pan) {
       if (event.param1 == 64) {
-        pan = 0.5;
+        inst.pan = 0.5;
       } else {
-        pan = (event.param1 / 127.0);
+        inst.pan = (event.param1 / 127.0);
       }
     } else if (event.cmd == RSEQCmd::Bend) {
       bend = std::int8_t(event.param1) / 127.0;
+      inst.pitchBend = bend * bendRange;
     } else if (event.cmd == RSEQCmd::BendRange) {
       bendRange = event.param1;
+      inst.pitchBend = bend * bendRange;
     } else if (event.cmd == RSEQCmd::WaitEnable) {
       noteWait = event.param1;
     } else if (event.cmd == RSEQCmd::ProgramChange) {
-      program = event.param1;
+      inst.program = event.param1;
     } else if (event.cmd < 0x80) {
-      auto sample = bank->getSample(program, event.cmd, event.param1);
-      if (!sample) {
-        continue;
-      }
-      SampleData* sd = ctx->getSample(sample->wave.pointer);
-      if (!sd) {
-        sd = war->getSample(sample->wave.pointer);
-      }
-      BaseNoteEvent* e;
-      if (sd) {
-        SampleEvent* se = new SampleEvent;
-        se->sampleID = sample->wave.pointer;
-        se->pitchBend = fastExp(event.cmd - sample->baseNote + bend * bendRange, expPitch);
-        e = se;
-      } else {
-        continue;
-        OscillatorEvent* oe = new OscillatorEvent;
-        oe->waveformID = oscID;
-        oe->frequency = noteToFreq(event.cmd + bend * bendRange);
-        e = oe;
-      }
-      e->timestamp = timestamp;
-      e->volume = volume * (event.param1 / 127.0);
-      e->setEnvelope(attack, hold, decay, sustain, release);
-      e->duration = event.param2 / ppqn / tempo * 60.0;
-      e->pan = pan;
+      double duration = event.param2 / ppqn / tempo * 60.0;
       if (noteWait) {
-        timestamp += e->duration;
+        timestamp += duration;
       }
-      out->addEvent(e);
+      auto e = inst.makeEvent(event.cmd, event.param1, duration);
+      if (e) {
+        e->timestamp = timestamp;
+        out->addEvent(e);
+      }
     } else if (event.cmd == RSEQCmd::Rest) {
       timestamp += event.param1 / ppqn / tempo * 60.0;
     } else if (event.cmd >= 0xCA && event.cmd <= 0xE0) {

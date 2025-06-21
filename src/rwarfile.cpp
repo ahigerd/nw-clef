@@ -25,7 +25,7 @@ viewstream RWARFile::getFile(int index, bool) const
   return viewstream(start, start + entry.size);
 }
 
-SampleData* RWARFile::getSample(int index)
+SampleData* RWARFile::getSample(int index) const
 {
   if (index < 0 || index >= entries.size()) {
     return nullptr;
