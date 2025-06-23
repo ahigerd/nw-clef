@@ -11,37 +11,4 @@ protected:
   void parseSTRG(NWChunk* strg);
 };
 
-class RSARFile : public SARFile
-{
-  friend class NWChunkLoader;
-
-protected:
-  RSARFile(std::istream& is, const ChunkInit& init);
-
-public:
-  virtual viewstream getFile(int index, bool audio) const override;
-  virtual viewstream getFile(int group, int index, bool audio) const override;
-
-  InfoChunk* info;
-
-private:
-  void parseSYMB(NWChunk* symb);
-};
-
-class FSARFile : public SARFile
-{
-  friend class NWChunkLoader;
-
-protected:
-  FSARFile(std::istream& is, const ChunkInit& init);
-};
-
-class CSARFile : public SARFile
-{
-  friend class NWChunkLoader;
-
-protected:
-  CSARFile(std::istream& is, const ChunkInit& init);
-};
-
 #endif

@@ -2,11 +2,11 @@
 #include "riffwriter.h"
 #include "synth/synthcontext.h"
 #include "seq/isequence.h"
-#include "sarfile.h"
-#include "rseqfile.h"
-#include "rbnkfile.h"
-#include "rwarfile.h"
-#include "lablchunk.h"
+#include "rvl/rsarfile.h"
+#include "rvl/rseqfile.h"
+#include "rvl/rbnkfile.h"
+#include "rvl/rwarfile.h"
+#include "rvl/infochunk.h"
 #include "riffwriter.h"
 #include <fstream>
 
@@ -47,15 +47,21 @@ int main(int argc, char** argv)
       glob = true;
       filter = filter.substr(0, filter.size() - 1);
     }
+  } else {
+    std::cout << "Listing sequences:" << std::endl;
   }
   std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));
   for (auto sound : nw->info->soundDataEntries) {
     if (sound.soundType == SoundType::SEQ && testFilter(filter, sound.name, glob)) {
+      if (!filter.size() && !glob) {
+        std::cout << sound.name << std::endl;
+        continue;
+      }
       std::cout << "=====================" << std::endl << sound.name << std::endl;
       auto seqFile = nw->getFile(sound.fileIndex, false);
       RSEQFile* seq = NWChunk::load<RSEQFile>(seqFile, nullptr, &clef);
       std::string label = seq->label(sound.seqData.labelEntry);
-      if (!label.size()) continue;
+      // if (!label.size()) continue;
       std::cout << "Label: " << label << std::endl;
       auto bankEntry = nw->info->soundBankEntries[sound.seqData.bankIndex];
       std::cout << "Bank:  " << bankEntry.name << std::endl;

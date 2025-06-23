@@ -5,9 +5,6 @@
 #include <memory>
 #include <stdexcept>
 #include "nwchunk.h"
-#include "infochunk.h"
-
-class InfoChunk;
 
 class FileBoundsException : public std::range_error
 {

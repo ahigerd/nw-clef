@@ -22,30 +22,41 @@ static int paramCount(int cmd)
   }
 }
 
-static std::string formatEvent(const RSEQTrack::RSEQEvent& event)
+std::string RSEQTrack::RSEQEvent::format() const
 {
   std::ostringstream ss;
 
-  if (event.cmd < 0x80) {
-    ss << midiNoteSymbol(event.cmd);
+  for (const auto& prefix : this->prefix) {
+    ss << "[" << MetaEnum<RSEQCmd>::toString(prefix.cmd) << "(";
+    if (prefix.cmd != RSEQCmd::PrefixIf) {
+      ss << prefix.param1;
+    }
+    if (prefix.cmd == RSEQCmd::PrefixRand || prefix.cmd == RSEQCmd::PrefixTimeRand) {
+      ss << "," << prefix.param2;
+    }
+    ss << ")] ";
+  }
+
+  if (cmd < 0x80) {
+    ss << midiNoteSymbol(cmd);
   } else {
     try {
-      ss << MetaEnum<RSEQCmd>::toString(event.cmd);
+      ss << MetaEnum<RSEQCmd>::toString(cmd);
     } catch (...) {
-      ss << "Unknown" << std::hex << int(event.cmd) << std::dec;
+      ss << "Unknown" << std::hex << int(cmd) << std::dec;
     }
   }
 
-  int pc = paramCount(event.cmd);
+  int pc = paramCount(cmd);
   if (!pc) {
     return ss.str();
   }
   ss << "(";
   if (pc >= 1) {
-    ss << event.param1;
+    ss << param1;
   }
   if (pc >= 2) {
-    ss << "," << event.param2;
+    ss << "," << param2;
   }
   ss << ")";
 
@@ -54,7 +65,7 @@ static std::string formatEvent(const RSEQTrack::RSEQEvent& event)
 
 std::ostream& operator<<(std::ostream& os, const RSEQTrack::RSEQEvent& event)
 {
-  return os << formatEvent(event);
+  return os << event.format();
 }
 
 static int eventDuration(const RSEQTrack::RSEQEvent& event)
@@ -97,17 +108,11 @@ void RSEQTrack::parse(std::uint32_t offset)
   double tempo = 120;
   double ppqn = 48;
 
-  std::cout << "T" << trackIndex << " " << tickPos << std::endl;
-
   parseOffset = offset;
-  hexdump(chunk->rawData.data() + offset, 32);
-  do {
-    std::uint32_t o = parseOffset;
+  std::string indent;
+  while (parseOffset < chunk->rawData.size()) {
     RSEQEvent event = readEvent();
-    if (trackIndex == 12) {
-      for (int indent = 0; indent < parseStack.size(); indent++) std::cout << "  ";
-      std::cout << o << " / " << tickPos <<  ": " << event << std::endl;
-    }
+    // std::cout << "[" << trackIndex << "] " << indent << event.offset << " " << event.timestamp << ": " << event << std::endl;
     if (event.cmd == RSEQCmd::EOT) {
       break;
     } else if (event.cmd == RSEQCmd::AddTrack) {
@@ -120,17 +125,17 @@ void RSEQTrack::parse(std::uint32_t offset)
         rest.param1 = tickPos;
         track.addEvent(rest);
       }
-      std::cout << "->T" << event.param1 << " " << tickPos << std::endl;
       track.parse(event.param2);
     } else if (event.cmd == RSEQCmd::Gosub) {
-      if (trackIndex == 12) {
-        std::cout << "gosub " << parseOffset << " -> " << event.param1 << std::endl;
-        hexdump(chunk->rawData.data() + event.param1, 16);
-      }
       parserPush(event.param1);
+      indent = indent + "  ";
     } else if (event.cmd == RSEQCmd::Return) {
+      if (!parseStack.size()) {
+        std::cerr << "XXX: unexpected Return" << std::endl;
+        break;
+      }
       parserPop();
-      if (trackIndex == 12) std::cout << "return " << parseOffset << std::endl;
+      indent = indent.substr(0, indent.size() - 2);
     } else if (event.cmd == RSEQCmd::Tempo) {
       tempo = event.param1;
       file->tempos[tickPos] = 60.0 / (tempo * ppqn);
@@ -153,7 +158,7 @@ void RSEQTrack::parse(std::uint32_t offset)
         parseOffset = event.param1;
       }
     }
-  } while (parseOffset < chunk->rawData.size());
+  }
 }
 
 RSEQTrack::RSEQEvent RSEQTrack::readEvent()
@@ -191,7 +196,16 @@ RSEQTrack::RSEQEvent RSEQTrack::readEvent()
       event.param1 = readByte();
       event.param2 = readS16();
       break;
-    // TODO: prefix
+    case RSEQCmd::PrefixRand:
+      event.param1 = readS16();
+      event.param2 = readS16();
+      break;
+    case RSEQCmd::PrefixVar:
+      event.param1 = readByte();
+      break;
+    case RSEQCmd::PrefixTime:
+    case RSEQCmd::PrefixTimeRand:
+    case RSEQCmd::PrefixTimeVar:
     case RSEQCmd::LoopEnd:
     case RSEQCmd::Return:
     case RSEQCmd::EOT:
@@ -200,6 +214,18 @@ RSEQTrack::RSEQEvent RSEQTrack::readEvent()
       event.param1 = readByte();
       break;
     }
+  }
+
+  if (event.cmd >= RSEQCmd::PrefixRand && event.cmd <= RSEQCmd::PrefixTimeVar) {
+    RSEQEvent nextEvent = readEvent();
+    nextEvent.prefix.insert(nextEvent.prefix.begin(), { std::uint8_t(event.cmd), std::int16_t(event.param1), std::int16_t(event.param2) });
+    if (event.cmd >= RSEQCmd::PrefixTime) {
+      nextEvent.prefix[0].param1 = readS16();
+      if (event.cmd == RSEQCmd::PrefixTimeRand) {
+        nextEvent.prefix[0].param2 = readS16();
+      }
+    }
+    return nextEvent;
   }
 
   return event;

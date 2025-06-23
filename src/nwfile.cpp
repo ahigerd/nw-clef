@@ -1,6 +1,5 @@
 #include "nwfile.h"
 #include "utility.h"
-#include "infochunk.h"
 #include <stdexcept>
 #include <cassert>
 #include <sstream>

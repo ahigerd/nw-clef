@@ -3,7 +3,7 @@
 
 #include "synth/iinstrument.h"
 #include "seq/sequenceevent.h"
-#include "rbnkfile.h"
+#include "rvl/rbnkfile.h"
 class RWARFile;
 
 struct NWInstrument : public DefaultInstrument

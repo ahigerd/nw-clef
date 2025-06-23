@@ -74,6 +74,7 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
   BasicTrack* out = new BasicTrack();
   int loopPoint = 0;
   int loopPointCount = 0;
+  int transpose = 0;
   const RSEQTrack* srcTrack = &src;
 
   int i = 0;
@@ -128,6 +129,8 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
     } else if (event.cmd == RSEQCmd::BendRange) {
       bendRange = event.param1;
       inst.pitchBend = bend * bendRange;
+    } else if (event.cmd == RSEQCmd::Transpose) {
+      transpose = event.param1;
     } else if (event.cmd == RSEQCmd::WaitEnable) {
       // ignore, already handled
     } else if (event.cmd == RSEQCmd::ProgramChange) {
@@ -136,7 +139,7 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
       double start = ticksToTimestamp(event.timestamp);
       double end = ticksToTimestamp(event.timestamp + event.param2);
       double duration = end - start;
-      auto e = inst.makeEvent(event.cmd, event.param1, duration);
+      auto e = inst.makeEvent(event.cmd + transpose, event.param1, duration);
       if (e) {
         lastID = e->playbackID;
         e->timestamp = start;
@@ -147,7 +150,7 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
     } else if (event.cmd >= 0xCA && event.cmd <= 0xE0) {
       // no-op for now
     } else {
-      std::cerr << event.offset << " event " << std::hex << event.cmd << std::dec << " " << event.param1 << " " << event.param2 << " " << event.param3 << std::endl;
+      std::cerr << event.offset << " unhandled " << event << std::endl;
     }
   }
 

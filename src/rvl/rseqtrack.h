@@ -13,7 +13,7 @@ META_ENUM(RSEQCmd,
   AddTrack = 0x88,
   Goto = 0x89,
   Gosub = 0x8A,
-  Ppqn = 0x8B,
+  Ppqn = 0xB0,
   Hold = 0xB1,
   Mono = 0xB2,
   VelocityRange = 0xB3,
@@ -77,12 +77,12 @@ META_ENUM(RSEQCmd,
   VarXor = 0x189,
   VarSetInverse = 0x18A,
   VarMod = 0x18B,
-  VarEQ = 0x1C0,
-  VarGE = 0x1C1,
-  VarGT = 0x1C2,
-  VarLE = 0x1C3,
-  VarLT = 0x1C4,
-  VarNE = 0x1C5,
+  VarEQ = 0x190,
+  VarGE = 0x191,
+  VarGT = 0x192,
+  VarLE = 0x193,
+  VarLT = 0x194,
+  VarNE = 0x195,
 );
 
 class RSEQTrack : public SEQTrack {
@@ -101,6 +101,8 @@ public:
     std::int32_t param1 = 0;
     std::int32_t param2 = 0;
     std::int32_t param3 = 0;
+
+    std::string format() const;
   };
 
   RSEQTrack(RSEQFile* file, NWChunk* chunk, int trackIndex);
