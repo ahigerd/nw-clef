@@ -5,155 +5,12 @@
 #include "clefcontext.h"
 #include "seq/isequence.h"
 #include "seq/itrack.h"
+#include "synth/sampler.h"
 #include "nwinstrument.h"
 #include "utility.h"
-#include <iostream>
-
-static const double expPitch = M_LN2 / 12.0;
-
-struct TrackParser {
-  using RSEQPrefix = RSEQFile::RSEQPrefix;
-  using RSEQEvent = RSEQFile::RSEQEvent;
-  using RSEQTrack = RSEQFile::RSEQTrack;
-
-  RSEQFile* file;
-  NWChunk* chunk;
-  std::uint32_t offset;
-  std::uint32_t elapsed;
-  RSEQTrack* track;
-
-  TrackParser(RSEQFile* file, RSEQTrack* track, NWChunk* chunk, std::uint32_t start, std::uint32_t startTime = 0, bool isSub = false)
-  : file(file), track(track), chunk(chunk), offset(start + 4), elapsed(0)
-  {
-    if (startTime > 0) {
-      RSEQEvent event;
-      event.cmd = RSEQCmd::Rest;
-      event.param1 = startTime;
-      std::cerr << "initial " << startTime << std::endl;
-      track->push_back(event);
-    }
-    do {
-      RSEQEvent event = readEvent();
-      if (event.cmd == RSEQCmd::EOT) {
-        break;
-      } else if (event.cmd == RSEQCmd::AddTrack) {
-        TrackParser(file, &file->tracks[event.param1], chunk, event.param2, elapsed);
-      } else if (event.cmd == RSEQCmd::AllocTracks) {
-        // Ignore
-      } else if (event.cmd == RSEQCmd::Tempo) {
-        file->tempo = event.param1;
-      } else {
-        track->push_back(event);
-        if (event.cmd < 0x80) {
-          elapsed += event.param2;
-        } else if (event.cmd == RSEQCmd::Rest) {
-          elapsed += event.param1;
-        } else if (event.cmd == RSEQCmd::Gosub) {
-          if (!file->subs.count(event.param1)) {
-            file->subs[event.param1] = RSEQTrack();
-            TrackParser(file, &file->subs[event.param1], chunk, event.param1, 0, true);
-          }
-        } else if (event.cmd == RSEQCmd::Return && isSub) {
-          break;
-        }
-      }
-    } while (offset < chunk->rawData.size());
-  }
-
-  inline std::uint8_t readByte()
-  {
-    return chunk->parseU8(offset++);
-  }
-
-  inline std::int16_t readS16()
-  {
-    std::int16_t value = chunk->parseS16(offset);
-    offset += 2;
-    return value;
-  }
-
-  inline std::uint32_t readU24()
-  {
-    std::uint32_t value = readByte() << 16;
-    value |= readByte() << 8;
-    value |= readByte();
-    return value;
-  }
-
-  inline std::int32_t readS24()
-  {
-    std::uint32_t value = readU24();
-    return std::int32_t(value << 8) >> 8; // sign-extend
-  }
-
-  inline std::uint32_t readU32()
-  {
-    std::uint32_t value = chunk->parseU32(offset);
-    offset += 4;
-    return value;
-  }
-
-  std::uint32_t readVLQ()
-  {
-    std::uint32_t value = 0;
-    std::uint8_t b = 0;
-    do {
-      b = readByte();
-      value = (value << 7) | (b & 0x7F);
-    } while (b & 0x80);
-    return value;
-  }
-
-  RSEQEvent readEvent()
-  {
-    RSEQEvent event;
-    event.offset = offset - 4;
-    event.cmd = readByte();
-
-    if (event.cmd < 0x80) {
-      event.param1 = readByte();
-      event.param2 = readVLQ();
-    } else {
-      switch (event.cmd) {
-      case RSEQCmd::Rest:
-      case RSEQCmd::ProgramChange:
-        event.param1 = readVLQ();
-        break;
-      case RSEQCmd::AddTrack:
-        event.param1 = readByte();
-        event.param2 = readU24();
-        break;
-      case RSEQCmd::Goto:
-      case RSEQCmd::Gosub:
-        event.param1 = readU24();
-        break;
-      case RSEQCmd::ModDelay:
-      case RSEQCmd::Tempo:
-      case RSEQCmd::Sweep:
-      case RSEQCmd::AllocTracks:
-        event.param1 = readS16();
-        break;
-      case RSEQCmd::Extended:
-        event.cmd = RSEQCmd::ExtendedBase + readByte();
-        event.param1 = readByte();
-        event.param2 = readS16();
-        break;
-      case RSEQCmd::LoopEnd:
-      case RSEQCmd::Return:
-      case RSEQCmd::EOT:
-        break;
-      default:
-        event.param1 = readByte();
-        break;
-      }
-    }
-
-    return event;
-  }
-};
 
 RSEQFile::RSEQFile(std::istream& is, const ChunkInit& init)
-: NWFile(is, init), tracks(16)
+: NWFile(is, init)
 {
   readRHeader(is);
 
@@ -163,7 +20,13 @@ RSEQFile::RSEQFile(std::istream& is, const ChunkInit& init)
     std::cout << label.name << "\t" << (label.dataOffset) << std::endl;
   }
 #endif
-  TrackParser(this, &tracks[0], data, data->parseU32(0) - 0xC);
+  for (int i = 0; i < 16; i++) {
+    tracks.emplace_back(this, data, i);
+  }
+  tempos[0] = 60.0 / (120 * 48); // 120 beats/minute = 2 ticks/second * 48 ticks/beat
+  std::uint32_t startOffset = data->parseU32(0) - 0xC;
+  data->rawData.erase(data->rawData.begin(), data->rawData.begin() + 4);
+  tracks[0].parse(startOffset);
 }
 
 std::string RSEQFile::label(int index) const
@@ -177,9 +40,9 @@ std::string RSEQFile::label(int index) const
 
 int RSEQFile::findOffset(const RSEQTrack* src, std::uint32_t offset)
 {
-  int len = src->size();
+  int len = src->events.size();
   for (int j = 0; j < len; j++) {
-    const RSEQEvent& target = src->at(j);
+    const RSEQTrack::RSEQEvent& target = src->events.at(j);
     if (target.offset == offset) {
       return j;
     }
@@ -187,31 +50,38 @@ int RSEQFile::findOffset(const RSEQTrack* src, std::uint32_t offset)
   return -1;
 }
 
+double RSEQFile::ticksToTimestamp(std::uint32_t ticks) const
+{
+  double timestamp = 0;
+  double tempo = 0;
+  for (auto pair : tempos) {
+    if (pair.first > ticks) {
+      timestamp += pair.second * pair.first;
+    } else {
+      timestamp += pair.second * (ticks - pair.first);
+      break;
+    }
+  }
+  return timestamp;
+}
+
 ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
 {
-  double tempo = this->tempo;
-  double ppqn = 48;
-  double timestamp = 0;
   double bend = 0, bendRange = 2;
-  bool noteWait = true;
 
   NWInstrument inst(bank, war);
 
   BasicTrack* out = new BasicTrack();
-  struct Frame {
-    const RSEQTrack* track;
-    int index;
-  };
-  std::vector<Frame> stack;
-  Frame loopPoint;
+  int loopPoint = 0;
   int loopPointCount = 0;
   const RSEQTrack* srcTrack = &src;
 
   int i = 0;
-  int len = src.size();
+  int len = src.events.size();
   int loopCount = 0;
+  std::uint64_t lastID = 0;
   for (int i = 0; i < len && loopCount < 2; i++) {
-    const RSEQEvent& event = srcTrack->at(i);
+    const RSEQTrack::RSEQEvent& event = srcTrack->events.at(i);
     if (event.cmd == RSEQCmd::Goto) {
       int j = findOffset(srcTrack, event.param1);
       if (j < 0) {
@@ -221,39 +91,16 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
         loopCount++;
       }
       i = j - 1;
-    } else if (event.cmd == RSEQCmd::Gosub) {
-      if (!subs.count(event.param1)) {
-        std::cerr << event.offset << " Gosub " << event.param1 << std::endl;
-        continue;
-      }
-      stack.push_back({ srcTrack, i });
-      srcTrack = &subs.at(event.param1);
-      i = -1;
-    } else if (event.cmd == RSEQCmd::Return) {
-      if (!stack.size()) {
-        std::cerr << event.offset << " XXX Bad return" << std::endl;
-        continue;
-      }
-      auto frame = stack.back();
-      stack.pop_back();
-      srcTrack = frame.track;
-      i = frame.index;
     } else if (event.cmd == RSEQCmd::LoopStart) {
       std::cerr << event.offset << " loop start " << event.param1 << std::endl;
-      loopPoint.track = srcTrack;
-      loopPoint.index = i;
+      loopPoint = i;
       loopPointCount = event.param1;
     } else if (event.cmd == RSEQCmd::LoopEnd) {
       std::cerr << event.offset << " loop end " << loopPointCount << std::endl;
       if (loopPointCount > 0) {
-        //loopPoint.track = srcTrack;
-        i = loopPoint.index;
+        i = loopPoint;
       }
       --loopPointCount;
-    } else if (event.cmd == RSEQCmd::Ppqn) {
-      std::cerr << "PPQN: " << event.param1 << std::endl;
-    } else if (event.cmd == RSEQCmd::Tempo) {
-      std::cerr << "Tempo: " << event.param1 << std::endl;
     } else if (event.cmd == RSEQCmd::Attack) {
       inst.attack = event.param1 / 127.0;
     } else if (event.cmd == RSEQCmd::Hold) {
@@ -265,35 +112,38 @@ ITrack* RSEQFile::createTrack(const RSEQTrack& src) const
     } else if (event.cmd == RSEQCmd::Release) {
       inst.release = event.param1 / 127.0;
     } else if (event.cmd == RSEQCmd::Volume) {
-      inst.volume = event.param1 / 127.0;
+      ChannelEvent* e = new ChannelEvent(AudioNode::Gain, event.param1 / 127.0);
+      e->timestamp = ticksToTimestamp(event.timestamp);
+      out->addEvent(e);
     } else if (event.cmd == RSEQCmd::Pan) {
-      if (event.param1 == 64) {
-        inst.pan = 0.5;
-      } else {
-        inst.pan = (event.param1 / 127.0);
-      }
+      ChannelEvent* e = new ChannelEvent(AudioNode::Pan, event.param1 / 128.0);
+      e->timestamp = ticksToTimestamp(event.timestamp);
+      out->addEvent(e);
     } else if (event.cmd == RSEQCmd::Bend) {
       bend = std::int8_t(event.param1) / 127.0;
       inst.pitchBend = bend * bendRange;
+      ModulatorEvent* e = new ModulatorEvent(Sampler::PitchBend, inst.pitchBend);
+      e->timestamp = ticksToTimestamp(event.timestamp);
+      out->addEvent(e);
     } else if (event.cmd == RSEQCmd::BendRange) {
       bendRange = event.param1;
       inst.pitchBend = bend * bendRange;
     } else if (event.cmd == RSEQCmd::WaitEnable) {
-      noteWait = event.param1;
+      // ignore, already handled
     } else if (event.cmd == RSEQCmd::ProgramChange) {
       inst.program = event.param1;
     } else if (event.cmd < 0x80) {
-      double duration = event.param2 / ppqn / tempo * 60.0;
-      if (noteWait) {
-        timestamp += duration;
-      }
+      double start = ticksToTimestamp(event.timestamp);
+      double end = ticksToTimestamp(event.timestamp + event.param2);
+      double duration = end - start;
       auto e = inst.makeEvent(event.cmd, event.param1, duration);
       if (e) {
-        e->timestamp = timestamp;
+        lastID = e->playbackID;
+        e->timestamp = start;
         out->addEvent(e);
       }
     } else if (event.cmd == RSEQCmd::Rest) {
-      timestamp += event.param1 / ppqn / tempo * 60.0;
+      // ignore, already handled
     } else if (event.cmd >= 0xCA && event.cmd <= 0xE0) {
       // no-op for now
     } else {
@@ -310,7 +160,7 @@ ISequence* RSEQFile::sequence(ClefContext* ctx) const
 
   int i = 0;
   for (const RSEQTrack& src : tracks) {
-    if (!src.size()) {
+    if (!src.events.size()) {
       continue;
     }
     seq->addTrack(createTrack(src));

@@ -26,7 +26,6 @@ protected:
 
   const NWFile* parent;
   std::uint32_t version;
-  bool isLittleEndian;
 
   std::uint16_t readU16(std::istream& is) const;
   std::uint32_t readU32(std::istream& is) const;
@@ -49,6 +48,7 @@ public:
   virtual ~NWChunk() {}
 
   ClefContext* ctx;
+  bool isLittleEndian;
   const std::streampos fileStartPos;
   const std::uint32_t magic;
   std::vector<std::uint8_t> rawData;

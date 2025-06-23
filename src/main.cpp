@@ -38,7 +38,7 @@ static bool testFilter(const std::string& filter, const std::string& name, bool 
 
 int main(int argc, char** argv)
 {
-  std::ifstream is(argv[1]);
+  std::ifstream is(argv[1], std::ios::in | std::ios::binary);
   std::string filter;
   bool glob = false;
   if (argc > 2) {

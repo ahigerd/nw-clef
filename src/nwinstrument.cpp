@@ -6,8 +6,6 @@
 
 #define PARAM(name) ((name >= 0) ? name : info->name / 127.0)
 
-static const double expPitch = M_LN2 / 12.0;
-
 NWInstrument::NWInstrument(const RBNKFile* bank, const RWARFile* war)
 : program(0),
   volume(-1),
@@ -42,7 +40,8 @@ BaseNoteEvent* NWInstrument::makeEvent(int noteNumber, int velocity, double dura
   SampleEvent* event = new SampleEvent();
   event->duration = duration;
   event->sampleID = sample->sampleID;
-  event->pitchBend = fastExp(noteNumber - info->baseNote + pitchBend, expPitch);
+  event->pitchBend = semitonesToFactor(noteNumber - info->baseNote);
+  event->modPitchBend + semitonesToFactor(pitchBend);
   event->volume = (velocity / 127.0) * PARAM(volume);
   event->pan = PARAM(pan);
   // TODO: units
