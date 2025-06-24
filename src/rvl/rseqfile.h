@@ -1,7 +1,7 @@
 #ifndef NW_RSEQFILE_H
 #define NW_RSEQFILE_H
 
-#include "nwfile.h"
+#include "seqfile.h"
 #include "rseqtrack.h"
 
 class ClefContext;
@@ -10,11 +10,10 @@ class ITrack;
 class RBNKFile;
 class RWARFile;
 
-class RSEQFile : public NWFile
+class RSEQFile : public SEQFile
 {
   friend class NWChunkLoader;
   friend class RSEQTrack;
-  friend class TrackParser;
 
 protected:
   RSEQFile(std::istream& is, const ChunkInit& init);
@@ -24,18 +23,12 @@ public:
 
   void loadBank(RBNKFile* bank, RWARFile* war);
 
-  ISequence* sequence(ClefContext* ctx) const;
+  ISequence* sequence(ClefContext* ctx) override;
 
 private:
   std::vector<RSEQTrack> tracks;
-  std::map<std::uint32_t, double> tempos; // seconds per tick
-  std::map<std::uint32_t, RSEQTrack> subs;
   RBNKFile* bank;
   RWARFile* war;
-
-  ITrack* createTrack(const RSEQTrack& src) const;
-  double ticksToTimestamp(std::uint32_t ticks) const;
-  static int findOffset(const RSEQTrack* src, std::uint32_t offset);
 };
 
 #endif

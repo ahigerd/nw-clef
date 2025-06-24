@@ -29,7 +29,7 @@ RBNKFile::RBNKFile(std::istream& is, const NWChunk::ChunkInit& init)
   readRHeader(is);
 
   auto data = section('DATA');
-  std::uint32_t numPrograms = data->parseU32(0) - 1;
+  std::uint32_t numPrograms = data->parseU32(0);
   std::uint32_t offset = 4;
   for (int i = 0; i < numPrograms; i++, offset += 8) {
     DataRef ref = data->parseDataRef(offset);

@@ -1,10 +1,25 @@
 #include "seqtrack.h"
+#include "seqfile.h"
 #include "nwchunk.h"
 
-SEQTrack::SEQTrack(NWChunk* chunk)
-: chunk(chunk), parseOffset(0), loopTimestamp(-1)
+SEQTrack::SEQTrack(SEQFile* file, NWChunk* chunk, int trackIndex)
+: seqFile(file),
+  chunk(chunk),
+  parseOffset(0),
+  playbackIndex(0),
+  lastTimestamp(0),
+  bend(0),
+  bendRange(2),
+  transpose(0),
+  loopStartTicks(-1),
+  loopEndTicks(-1),
+  loopStartIndex(-1),
+  trackEndIndex(-1),
+  trackIndex(trackIndex),
+  maxTimestamp(-1)
 {
   // initializers only
+  finishedOnce = false;
 }
 
 std::uint8_t SEQTrack::readByte()
@@ -68,4 +83,66 @@ void SEQTrack::parserPop()
 {
   parseOffset = parseStack.back();
   parseStack.pop_back();
+}
+
+std::shared_ptr<SequenceEvent> SEQTrack::readNextEvent()
+{
+  if (lastTimestamp > maxTimestamp) {
+    return nullptr;
+  }
+  int loopCount = 0;
+  while (true) {
+    std::int32_t index = playbackIndex;
+    if (loopStartTicks >= 0 && index >= loopEndIndex) {
+      index = ((index - loopStartIndex) % (loopEndIndex - loopStartIndex)) + loopStartIndex;
+      loopCount = (playbackIndex - loopStartIndex) / (loopEndIndex - loopStartIndex);
+    } else if (loopStartTicks < 0 && index >= trackEndIndex) {
+      return nullptr;
+    }
+    SequenceEvent* event = translateEvent(index, loopCount);
+    ++playbackIndex;
+    if (event) {
+      lastTimestamp = event->timestamp;
+      if (lastTimestamp > maxTimestamp) {
+        delete event;
+        return nullptr;
+      }
+      return std::shared_ptr<SequenceEvent>(event);
+    }
+  }
+}
+
+void SEQTrack::internalReset()
+{
+  playbackIndex = 0;
+  lastTimestamp = 0;
+  bend = 0;
+  bendRange = 2;
+  transpose = 0;
+  int numVars = seqFile->variables.size();
+  for (int i = 0; i < numVars; i++) {
+    seqFile->variables[i] = 0;
+  }
+}
+
+bool SEQTrack::isFinished() const
+{
+  if (loopStartTicks >= 0) {
+    std::int32_t loopLength = loopEndIndex - loopStartIndex;
+    // TODO: coda?
+    return playbackIndex >= loopEndIndex + loopLength;
+  } else {
+    return playbackIndex >= trackEndIndex;
+  }
+}
+
+double SEQTrack::length() const
+{
+  if (loopStartTicks >= 0) {
+    std::int32_t loopLength = loopEndTicks - loopStartTicks;
+    // TODO: coda?
+    return seqFile->ticksToTimestamp(loopEndTicks + loopLength);
+  } else {
+    return seqFile->ticksToTimestamp(loopEndTicks);
+  }
 }

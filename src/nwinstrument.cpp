@@ -6,6 +6,12 @@
 
 #define PARAM(name) ((name >= 0) ? name : info->name / 127.0)
 
+NWInstrument::NWInstrument()
+: bank(nullptr), war(nullptr)
+{
+  // initializers only
+}
+
 NWInstrument::NWInstrument(const RBNKFile* bank, const RWARFile* war)
 : program(0),
   volume(-1),

@@ -8,8 +8,11 @@ class RWARFile;
 
 struct NWInstrument : public DefaultInstrument
 {
+  NWInstrument();
   NWInstrument(const RBNKFile* bank, const RWARFile* war);
   NWInstrument(const NWInstrument& other) = default;
+  NWInstrument& operator=(const NWInstrument& other) = default;
+  NWInstrument& operator=(NWInstrument&& other) = default;
 
   int program;
   double volume, pan, pitchBend;

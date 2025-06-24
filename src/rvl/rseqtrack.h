@@ -111,15 +111,17 @@ public:
 
   void parse(std::uint32_t offset);
   void addEvent(const RSEQEvent& event);
-  RSEQEvent readEvent();
+  int findEvent(std::uint32_t offset) const;
+
+protected:
+  virtual SequenceEvent* translateEvent(std::int32_t& index, int loopCount) override;
 
 private:
+  RSEQEvent readEvent();
+
   RSEQFile* file;
   std::uint32_t tickPos;
-  int trackIndex;
   bool noteWait;
-
-  int findEvent(std::uint32_t offset) const;
 };
 
 std::ostream& operator<<(std::ostream& os, const RSEQTrack::RSEQEvent& event);

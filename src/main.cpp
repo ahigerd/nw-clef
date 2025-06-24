@@ -51,8 +51,10 @@ int main(int argc, char** argv)
     std::cout << "Listing sequences:" << std::endl;
   }
   std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));
+  bool didSomething = false;
   for (auto sound : nw->info->soundDataEntries) {
     if (sound.soundType == SoundType::SEQ && testFilter(filter, sound.name, glob)) {
+      didSomething = true;
       if (!filter.size() && !glob) {
         std::cout << sound.name << std::endl;
         continue;
@@ -101,5 +103,13 @@ int main(int argc, char** argv)
     }
   }
 #endif
+  if (!didSomething) {
+    if (filter.size()) {
+      std::cerr << "Nothing found matching \"" << filter << "\"" << std::endl;
+    } else {
+      std::cerr << "No sequences found in " << argv[1] << std::endl;
+    }
+    return 1;
+  }
   return 0;
 }

@@ -1,6 +1,8 @@
 #include "rseqtrack.h"
 #include "rseqfile.h"
 #include "utility.h"
+#include "seq/sequenceevent.h"
+#include "synth/sampler.h"
 #include <sstream>
 
 static int paramCount(int cmd)
@@ -79,7 +81,7 @@ static int eventDuration(const RSEQTrack::RSEQEvent& event)
 }
 
 RSEQTrack::RSEQTrack(RSEQFile* file, NWChunk* chunk, int trackIndex)
-: SEQTrack(chunk), file(file), tickPos(0), trackIndex(trackIndex), noteWait(true)
+: SEQTrack(file, chunk, trackIndex), file(file), tickPos(0), noteWait(true)
 {
   // initializers only
 }
@@ -112,7 +114,7 @@ void RSEQTrack::parse(std::uint32_t offset)
   std::string indent;
   while (parseOffset < chunk->rawData.size()) {
     RSEQEvent event = readEvent();
-    // std::cout << "[" << trackIndex << "] " << indent << event.offset << " " << event.timestamp << ": " << event << std::endl;
+    //std::cout << "[" << trackIndex << "] " << indent << event.offset << " " << event.timestamp << ": " << event << std::endl;
     if (event.cmd == RSEQCmd::EOT) {
       break;
     } else if (event.cmd == RSEQCmd::AddTrack) {
@@ -152,13 +154,20 @@ void RSEQTrack::parse(std::uint32_t offset)
         int target = findEvent(event.param1);
         if (target >= 0) {
           // TODO: non-loop backwards gotos
-          loopTimestamp = events[target].timestamp;
+          loopStartTicks = events[target].timestamp;
+          loopEndTicks = event.timestamp;
+          loopStartIndex = target;
+          loopEndIndex = events.size() - 1;
           break;
         }
         parseOffset = event.param1;
       }
     }
   }
+  if (loopEndTicks < 0 && events.size()) {
+    loopEndTicks = events.back().timestamp;
+  }
+  trackEndIndex = events.size() - 1;
 }
 
 RSEQTrack::RSEQEvent RSEQTrack::readEvent()
@@ -229,4 +238,101 @@ RSEQTrack::RSEQEvent RSEQTrack::readEvent()
   }
 
   return event;
+}
+
+SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
+{
+  if (i >= events.size()) {
+    return nullptr;
+  }
+  const RSEQTrack::RSEQEvent& event = events.at(i);
+  double timestamp = seqFile->ticksToTimestamp(event.timestamp + loopCount * (loopEndTicks - loopStartTicks));
+  // std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << (loopEndTicks - loopStartTicks) << ") " << timestamp << " " << event << std::endl;
+  if (event.cmd == RSEQCmd::Goto) {
+    int j = findEvent(event.param1);
+    if (j < 0) {
+      std::cerr << event.offset << ": Bad goto " << event.param1 << std::endl;
+      return nullptr;
+    }
+    i = j - 1;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::LoopStart) {
+    std::cerr << event.offset << " loop start " << event.param1 << std::endl;
+    loopStack.emplace_back(i, event.param1);
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::LoopEnd) {
+    std::cerr << event.offset << " loop end " << std::endl;
+    if (!loopStack.size()) {
+      std::cerr << "Unexpected loop end" << std::endl;
+      return nullptr;
+    }
+    int& count = loopStack.back().second;
+    if (count > 0) {
+      i = loopStack.back().first;
+      --count;
+    } else {
+      loopStack.pop_back();
+    }
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::Attack) {
+    inst.attack = event.param1 / 127.0;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::Hold) {
+    inst.hold = event.param1 / 127.0;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::Decay) {
+    inst.decay = event.param1 / 127.0;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::Sustain) {
+    inst.sustain = event.param1 / 127.0;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::Release) {
+    inst.release = event.param1 / 127.0;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::Volume) {
+    ChannelEvent* e = new ChannelEvent(AudioNode::Gain, event.param1 / 127.0);
+    e->timestamp = timestamp;
+    return e;
+  } else if (event.cmd == RSEQCmd::Pan) {
+    ChannelEvent* e = new ChannelEvent(AudioNode::Pan, event.param1 / 128.0);
+    e->timestamp = timestamp;
+    return e;
+  } else if (event.cmd == RSEQCmd::Bend) {
+    bend = std::int8_t(event.param1) / 127.0;
+    inst.pitchBend = bend * bendRange;
+    ModulatorEvent* e = new ModulatorEvent(Sampler::PitchBend, inst.pitchBend);
+    e->timestamp = timestamp;
+    return e;
+  } else if (event.cmd == RSEQCmd::BendRange) {
+    bendRange = event.param1;
+    inst.pitchBend = bend * bendRange;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::Transpose) {
+    transpose = event.param1;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::WaitEnable) {
+    // ignore, already handled
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::ProgramChange) {
+    inst.program = event.param1;
+    return nullptr;
+  } else if (event.cmd < 0x80) {
+    double start = timestamp;
+    double end = seqFile->ticksToTimestamp(event.timestamp + event.param2 + loopCount * (loopEndTicks - loopStartTicks));
+    double duration = end - start;
+    auto e = inst.makeEvent(event.cmd + transpose, event.param1, duration);
+    if (e) {
+      e->timestamp = start;
+    }
+    return e;
+  } else if (event.cmd == RSEQCmd::Rest) {
+    // ignore, already handled
+    return nullptr;
+  } else if (event.cmd >= 0xCA && event.cmd <= 0xE0) {
+    // no-op for now
+    return nullptr;
+  } else {
+    std::cerr << event.offset << " unhandled " << event << std::endl;
+    return nullptr;
+  }
 }
