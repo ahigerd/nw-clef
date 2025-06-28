@@ -118,7 +118,7 @@ void RSEQTrack::parse(std::uint32_t offset)
     if (event.cmd == RSEQCmd::EOT) {
       break;
     } else if (event.cmd == RSEQCmd::AddTrack) {
-      RSEQTrack& track = file->tracks[event.param1];
+      RSEQTrack& track = *file->tracks[event.param1].get();
       if (tickPos > 0) {
         RSEQEvent rest;
         rest.offset = 0xFFFF;

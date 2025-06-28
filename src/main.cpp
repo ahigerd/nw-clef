@@ -8,108 +8,99 @@
 #include "rvl/rwarfile.h"
 #include "rvl/infochunk.h"
 #include "riffwriter.h"
+#include "commandargs.h"
+#include "listactions.h"
+#include <sstream>
 #include <fstream>
 
-ClefContext clef;
+int synth(RSEQFile* file, const std::string& name, const std::string& outPath) {
+  file->ctx->purgeSamples();
+  SynthContext context(file->ctx, 44100, 2);
 
-int synth(RSEQFile* file, const std::string& name) {
-  clef.purgeSamples();
-  SynthContext context(&clef, 44100, 2);
-
-  ISequence* seq = file->sequence(&clef);
+  ISequence* seq = file->sequence();
   for (int i = 0; i < seq->numTracks(); i++) {
     context.addChannel(seq->getTrack(i));
   }
 
   RiffWriter riff(context.sampleRate, true);
-  riff.open(name + ".wav");
+  riff.open(outPath + "/" + name + ".wav");
   context.save(&riff);
   return 0;
 }
 
-static bool testFilter(const std::string& filter, const std::string& name, bool glob)
-{
-  if (!filter.size()) return true;
-  if (glob) {
-    return name.substr(0, filter.size()) == filter;
-  }
-  return name == filter;
-}
-
 int main(int argc, char** argv)
 {
-  std::ifstream is(argv[1], std::ios::in | std::ios::binary);
-  std::string filter;
-  bool glob = false;
-  if (argc > 2) {
-    filter = argv[2];
-    if (filter.size() && filter.back() == '*') {
-      glob = true;
-      filter = filter.substr(0, filter.size() - 1);
-    }
-  } else {
-    std::cout << "Listing sequences:" << std::endl;
+  CommandArgs args({
+    { "help", "h", "", "Show this help text" },
+    { "output", "o", "dir", "Specify the path for saved files (default output/)" },
+    { "list", "l", "type", "List entries of the specified type (see below)" },
+    { "filter", "f", "pattern", "Only consider results matching pattern" },
+    { "seq", "s", "pattern", "Read sequence(s) matching pattern" },
+    { "", "", "input", "Path(s) to the input file(s)" },
+  });
+
+  std::string argError = args.parse(argc, argv);
+  if (!argError.empty()) {
+    std::cerr << argError << std::endl;
+    return 1;
   }
-  std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));
-  bool didSomething = false;
-  for (auto sound : nw->info->soundDataEntries) {
-    if (sound.soundType == SoundType::SEQ && testFilter(filter, sound.name, glob)) {
-      didSomething = true;
-      if (!filter.size() && !glob) {
-        std::cout << sound.name << std::endl;
+
+  if (args.hasKey("help") || !args.positional().size()) {
+    std::cout << args.usageText(argv[0]) << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Options for --list:" << std::endl;
+    std::cerr << "    seq     List sequences" << std::endl;
+    std::cerr << "    strm    List streams" << std::endl;
+    std::cerr << "    wave    List named waves" << std::endl;
+    std::cerr << "    bank    List banks" << std::endl;
+    std::cerr << "    file    List named files" << std::endl;
+    std::cerr << "    group   List groups" << std::endl;
+    std::cerr << "    player  List players" << std::endl;
+    std::cerr << "    label   List labels on sequence" << std::endl;
+    /*
+#ifndef _WIN32
+    std::cerr << std::endl;
+    std::cerr << "When used with --synth, specifying - as an output path will send the rendered output" << std::endl;
+    std::cerr << "to stdout, suitable for piping into another program for playback or transcoding." << std::endl;
+#endif
+    */
+    return 0;
+  }
+
+  if (args.hasKey("list")) {
+    return listMembers(args);
+  }
+
+  Glob glob(args.getString("filter"));
+  for (const std::string& filename : args.positional()) {
+    ClefContext clef;
+    std::ifstream is(filename, std::ios::in | std::ios::binary);
+    std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));
+    bool didSomething = false;
+    for (auto sound : nw->info->soundDataEntries) {
+      if (sound.soundType != SoundType::SEQ || !glob.match(sound.name)) {
         continue;
       }
-      std::cout << "=====================" << std::endl << sound.name << std::endl;
+      didSomething = true;
       auto seqFile = nw->getFile(sound.fileIndex, false);
       RSEQFile* seq = NWChunk::load<RSEQFile>(seqFile, nullptr, &clef);
-      std::string label = seq->label(sound.seqData.labelEntry);
-      // if (!label.size()) continue;
-      std::cout << "Label: " << label << std::endl;
-      auto bankEntry = nw->info->soundBankEntries[sound.seqData.bankIndex];
-      std::cout << "Bank:  " << bankEntry.name << std::endl;
 
+      auto bankEntry = nw->info->soundBankEntries[sound.seqData.bankIndex];
       auto bankFile = nw->getFile(bankEntry.fileIndex, false);
       std::unique_ptr<RBNKFile> bank(NWChunk::load<RBNKFile>(bankFile, nullptr, &clef));
       auto audioFile = nw->getFile(bankEntry.fileIndex, true);
       std::unique_ptr<RWARFile> war(NWChunk::load<RWARFile>(audioFile, nullptr, &clef));
       seq->loadBank(bank.get(), war.get());
 
-      synth(seq, sound.name);
+      synth(seq, sound.name, args.getString("output", "./output"));
     }
-  }
-#if 0
-  for (auto bankEntry : nw->info->soundBankEntries) {
-    std::cout << bankEntry.name << std::endl;
-    if (bankEntry.name != "BNK_SEQ_O_RANKING") {
-      continue;
-    }
-    auto fileEntry = nw->info->fileEntries[bankEntry.fileIndex];
-    std::cout << bankEntry.name << " " << fileEntry.mainSize << " / " << fileEntry.audioSize << std::endl;
-    auto bankFile = nw->getFile(bankEntry.fileIndex, false);
-    std::unique_ptr<RBNKFile> bank(NWChunk::load<RBNKFile>(bankFile, nullptr, &clef));
-    auto audioFile = nw->getFile(bankEntry.fileIndex, true);
-    std::unique_ptr<RWARFile> war(NWChunk::load<RWARFile>(audioFile, nullptr, &clef));
-    for (int i = 0; i < war->numSamples(); i++) {
-      auto s = war->getSample(i);
-      if (!s) continue;
-      RiffWriter riff(s->sampleRate, s->channels.size() > 1);
-      riff.open("out/" + bankEntry.name + "_" + std::to_string(i) + ".wav");
-      if (s->channels.size() > 1) {
-        riff.write(s->channels[0], s->channels[1]);
+    if (!didSomething) {
+      if (args.hasKey("filter")) {
+        std::cerr << "Nothing found matching \"" << args.getString("filter") << "\" in " << filename << std::endl;
       } else {
-        riff.write(s->channels[0]);
+        std::cerr << "No sequences found in " << filename << std::endl;
       }
-      riff.close();
     }
-  }
-#endif
-  if (!didSomething) {
-    if (filter.size()) {
-      std::cerr << "Nothing found matching \"" << filter << "\"" << std::endl;
-    } else {
-      std::cerr << "No sequences found in " << argv[1] << std::endl;
-    }
-    return 1;
   }
   return 0;
 }

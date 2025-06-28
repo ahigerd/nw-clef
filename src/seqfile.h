@@ -12,7 +12,7 @@ protected:
   std::map<std::uint32_t, double> tempos; // seconds per tick
 
 public:
-  virtual ISequence* sequence(ClefContext* ctx) = 0;
+  virtual ISequence* sequence() = 0;
 
   double ticksToTimestamp(std::uint32_t ticks) const;
 
