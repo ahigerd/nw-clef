@@ -2,12 +2,13 @@
 *.tmp
 *.sw*
 
-# audio files
+# audio / output files
 *.mp3
 *.m4a
 *.wav
 *.m3u
 *.b?sar
+*.csv
 
 # build temporaries
 *.o

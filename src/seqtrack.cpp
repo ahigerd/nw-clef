@@ -91,16 +91,17 @@ std::shared_ptr<SequenceEvent> SEQTrack::readNextEvent()
     return nullptr;
   }
   int loopCount = 0;
+  int loopLength = loopEndIndex - loopStartIndex;
   while (true) {
     std::int32_t index = playbackIndex;
     if (loopStartTicks >= 0 && index >= loopEndIndex) {
-      index = ((index - loopStartIndex) % (loopEndIndex - loopStartIndex)) + loopStartIndex;
-      loopCount = (playbackIndex - loopStartIndex) / (loopEndIndex - loopStartIndex);
-    } else if (loopStartTicks < 0 && index >= trackEndIndex) {
+      index = ((index - loopStartIndex) % loopLength) + loopStartIndex;
+      loopCount = (playbackIndex - loopStartIndex) / loopLength;
+    } else if (loopStartTicks < 0 && index > trackEndIndex) {
       return nullptr;
     }
     SequenceEvent* event = translateEvent(index, loopCount);
-    ++playbackIndex;
+    playbackIndex = index + loopCount * loopLength + 1;
     if (event) {
       lastTimestamp = event->timestamp;
       if (lastTimestamp > maxTimestamp) {
@@ -130,15 +131,19 @@ bool SEQTrack::isFinished() const
   if (loopStartTicks >= 0) {
     std::int32_t loopLength = loopEndIndex - loopStartIndex;
     // TODO: coda?
-    return playbackIndex >= loopEndIndex + loopLength;
+    return playbackIndex > loopEndIndex + loopLength;
   } else {
-    return playbackIndex >= trackEndIndex;
+    return playbackIndex > trackEndIndex;
   }
 }
 
 double SEQTrack::length() const
 {
-  if (loopStartTicks >= 0) {
+  if (loopEndTicks < 0) {
+    return 0;
+  } else if (maxTimestamp >= 0) {
+    return maxTimestamp;
+  } else if (loopStartTicks >= 0) {
     std::int32_t loopLength = loopEndTicks - loopStartTicks;
     // TODO: coda?
     return seqFile->ticksToTimestamp(loopEndTicks + loopLength);

@@ -4,6 +4,9 @@
 #include "seq/sequenceevent.h"
 #include "synth/sampler.h"
 #include <sstream>
+#include <iomanip>
+
+bool RSEQTrack::parseVerbose = false;
 
 static int paramCount(int cmd)
 {
@@ -55,10 +58,17 @@ std::string RSEQTrack::RSEQEvent::format() const
   }
   ss << "(";
   if (pc >= 1) {
-    ss << param1;
+    if (cmd == RSEQCmd::Goto || cmd == RSEQCmd::Gosub) {
+      ss << "0x" << std::hex << std::setw(4) << std::setfill('0');
+    }
+    ss << param1 << std::dec;
   }
   if (pc >= 2) {
-    ss << "," << param2;
+    ss << ",";
+    if (cmd == RSEQCmd::AddTrack) {
+      ss << "0x" << std::hex << std::setw(4) << std::setfill('0');
+    }
+    ss << param2 << std::dec;
   }
   ss << ")";
 
@@ -114,6 +124,9 @@ void RSEQTrack::parse(std::uint32_t offset)
   std::string indent;
   while (parseOffset < chunk->rawData.size()) {
     RSEQEvent event = readEvent();
+    if (parseVerbose) {
+      addEvent(event);
+    }
     //std::cout << "[" << trackIndex << "] " << indent << event.offset << " " << event.timestamp << ": " << event << std::endl;
     if (event.cmd == RSEQCmd::EOT) {
       break;
@@ -149,7 +162,9 @@ void RSEQTrack::parse(std::uint32_t offset)
     } else if (event.cmd == RSEQCmd::AllocTracks) {
       // Ignore
     } else {
-      addEvent(event);
+      if (!parseVerbose) {
+        addEvent(event);
+      }
       if (event.cmd == RSEQCmd::Goto) {
         int target = findEvent(event.param1);
         if (target >= 0) {
@@ -247,7 +262,7 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
   }
   const RSEQTrack::RSEQEvent& event = events.at(i);
   double timestamp = seqFile->ticksToTimestamp(event.timestamp + loopCount * (loopEndTicks - loopStartTicks));
-  // std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << (loopEndTicks - loopStartTicks) << ") " << timestamp << " " << event << std::endl;
+  //std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << loopEndIndex << ") " << timestamp << " " << event << std::endl;
   if (event.cmd == RSEQCmd::Goto) {
     int j = findEvent(event.param1);
     if (j < 0) {
@@ -261,9 +276,8 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
     loopStack.emplace_back(i, event.param1);
     return nullptr;
   } else if (event.cmd == RSEQCmd::LoopEnd) {
-    std::cerr << event.offset << " loop end " << std::endl;
     if (!loopStack.size()) {
-      std::cerr << "Unexpected loop end" << std::endl;
+      std::cerr << event.offset << ": Unexpected loop end" << std::endl;
       return nullptr;
     }
     int& count = loopStack.back().second;
@@ -300,7 +314,7 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
   } else if (event.cmd == RSEQCmd::Bend) {
     bend = std::int8_t(event.param1) / 127.0;
     inst.pitchBend = bend * bendRange;
-    ModulatorEvent* e = new ModulatorEvent(Sampler::PitchBend, inst.pitchBend);
+    ModulatorEvent* e = new ModulatorEvent(Sampler::PitchBend, semitonesToFactor(inst.pitchBend));
     e->timestamp = timestamp;
     return e;
   } else if (event.cmd == RSEQCmd::BendRange) {
@@ -315,6 +329,9 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
     return nullptr;
   } else if (event.cmd == RSEQCmd::ProgramChange) {
     inst.program = event.param1;
+    return nullptr;
+  } else if (event.cmd == RSEQCmd::Tie) {
+    inst.tie = event.param1;
     return nullptr;
   } else if (event.cmd < 0x80) {
     double start = timestamp;

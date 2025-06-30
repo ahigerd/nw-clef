@@ -87,6 +87,8 @@ META_ENUM(RSEQCmd,
 
 class RSEQTrack : public SEQTrack {
 public:
+  static bool parseVerbose;
+
   struct RSEQPrefix {
     std::uint8_t cmd;
     std::int16_t param1 = 0;

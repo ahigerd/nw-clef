@@ -17,6 +17,7 @@ struct NWInstrument : public DefaultInstrument
   int program;
   double volume, pan, pitchBend;
   double attack, hold, decay, sustain, release;
+  bool tie;
 
   BaseNoteEvent* makeEvent(int noteNumber, int velocity, double duration) const;
   //virtual Channel::Note* noteEvent(Channel* channel, std::shared_ptr<BaseNoteEvent> event);

@@ -16,12 +16,13 @@ NWInstrument::NWInstrument(const RBNKFile* bank, const RWARFile* war)
 : program(0),
   volume(-1),
   pan(-1),
-  pitchBend(1),
+  pitchBend(0),
   attack(-1),
   hold(-1),
   decay(-1),
   sustain(-1),
   release(-1),
+  tie(false),
   bank(bank),
   war(war)
 {
@@ -47,7 +48,7 @@ BaseNoteEvent* NWInstrument::makeEvent(int noteNumber, int velocity, double dura
   event->duration = duration;
   event->sampleID = sample->sampleID;
   event->pitchBend = semitonesToFactor(noteNumber - info->baseNote);
-  event->modPitchBend + semitonesToFactor(pitchBend);
+  event->modPitchBend = semitonesToFactor(pitchBend);
   event->volume = (velocity / 127.0) * PARAM(volume);
   event->pan = PARAM(pan);
   // TODO: units
