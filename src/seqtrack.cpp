@@ -128,13 +128,16 @@ void SEQTrack::internalReset()
 
 bool SEQTrack::isFinished() const
 {
-  if (loopStartTicks >= 0) {
+  if (loopEndTicks < 0) {
+    return true;
+  } else if (loopStartTicks >= 0) {
     std::int32_t loopLength = loopEndIndex - loopStartIndex;
     // TODO: coda?
     return playbackIndex > loopEndIndex + loopLength;
   } else {
     return playbackIndex > trackEndIndex;
   }
+  // return loopEndTicks < 0 || lastTimestamp >= maxTimestamp;
 }
 
 double SEQTrack::length() const

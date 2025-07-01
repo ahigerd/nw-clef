@@ -4,6 +4,7 @@
 #include "nwfile.h"
 
 class RWARFile;
+class SynthContext;
 
 class RBNKFile : public NWFile
 {
@@ -35,6 +36,8 @@ public:
   };
 
   const Sample* getSample(int program, int key, int vel) const;
+
+  void registerInstruments(SynthContext* synth, RWARFile* war);
 
 private:
   struct VelSplit {

@@ -1,5 +1,8 @@
 #include "rbnkfile.h"
+#include "rwarfile.h"
 #include "utility.h"
+#include "nwinstrument.h"
+#include "synth/synthcontext.h"
 
 RBNKFile::Sample::Sample(NWChunk* file, int offset)
 : attack(file->parseS8(offset + 4)),
@@ -109,4 +112,13 @@ const RBNKFile::Sample* RBNKFile::getSample(int program, int key, int vel) const
     }
   }
   return nullptr;
+}
+
+// for DAW plugins
+void RBNKFile::registerInstruments(SynthContext* synth, RWARFile* war)
+{
+  int numPrograms = programs.size();
+  for (int i = 0; i < numPrograms; i++) {
+    synth->registerInstrument(i, std::unique_ptr<IInstrument>(new NWInstrument(synth, this, war, i)));
+  }
 }

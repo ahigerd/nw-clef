@@ -6,6 +6,7 @@
 #include "seq/isequence.h"
 
 class ClefContext;
+class SynthContext;
 class ISequence;
 class ITrack;
 class RBNKFile;
@@ -24,7 +25,7 @@ public:
 
   std::string label(int index) const;
 
-  void loadBank(RBNKFile* bank, RWARFile* war);
+  void loadBank(SynthContext* synth, RBNKFile* bank, RWARFile* war);
 
   ISequence* sequence() override;
 

@@ -5,21 +5,37 @@
 #include "seq/sequenceevent.h"
 #include "rvl/rbnkfile.h"
 class RWARFile;
+class SynthContext;
 
 struct NWInstrument : public DefaultInstrument
 {
   NWInstrument();
-  NWInstrument(const RBNKFile* bank, const RWARFile* war);
+  NWInstrument(SynthContext* synth, const RBNKFile* bank, const RWARFile* war, int program = 0);
   NWInstrument(const NWInstrument& other) = default;
   NWInstrument& operator=(const NWInstrument& other) = default;
   NWInstrument& operator=(NWInstrument&& other) = default;
 
+  struct TimeParam {
+    TimeParam(double value = 0);
+
+    TimeParam& operator=(double value);
+
+    double valueAt(double time) const;
+
+    double startLevel;
+    double startTime;
+    double endLevel;
+    double endTime;
+  };
+
   int program;
-  double volume, pan, pitchBend;
+  double volume;
+  TimeParam pan;
+  TimeParam pitchBend;
   double attack, hold, decay, sustain, release;
   bool tie;
 
-  BaseNoteEvent* makeEvent(int noteNumber, int velocity, double duration) const;
+  BaseNoteEvent* makeEvent(double timestamp, int noteNumber, int velocity, double duration) const;
   //virtual Channel::Note* noteEvent(Channel* channel, std::shared_ptr<BaseNoteEvent> event);
   //virtual void channelEvent(Channel* channel, std::shared_ptr<ChannelEvent> event);
   //virtual void modulatorEvent(Channel* channel, std::shared_ptr<ModulatorEvent> event);
@@ -27,6 +43,7 @@ struct NWInstrument : public DefaultInstrument
   //virtual std::vector<int32_t> supportedChannelParams() const;
 
 private:
+  SynthContext* synth;
   const RBNKFile* bank;
   const RWARFile* war;
   //BaseOscillator* makeLFO(const LFO& lfo) const;

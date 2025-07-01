@@ -91,7 +91,7 @@ static int eventDuration(const RSEQTrack::RSEQEvent& event)
 }
 
 RSEQTrack::RSEQTrack(RSEQFile* file, NWChunk* chunk, int trackIndex)
-: SEQTrack(file, chunk, trackIndex), file(file), tickPos(0), noteWait(true)
+: SEQTrack(file, chunk, trackIndex), file(file), tickPos(0), noteWait(true), didInitInstrument(false)
 {
   // initializers only
 }
@@ -132,14 +132,7 @@ void RSEQTrack::parse(std::uint32_t offset)
       break;
     } else if (event.cmd == RSEQCmd::AddTrack) {
       RSEQTrack& track = *file->tracks[event.param1].get();
-      if (tickPos > 0) {
-        RSEQEvent rest;
-        rest.offset = 0xFFFF;
-        rest.timestamp = 0;
-        rest.cmd = RSEQCmd::Rest;
-        rest.param1 = tickPos;
-        track.addEvent(rest);
-      }
+      //track.tickPos = tickPos;
       track.parse(event.param2);
     } else if (event.cmd == RSEQCmd::Gosub) {
       parserPush(event.param1);
@@ -180,7 +173,11 @@ void RSEQTrack::parse(std::uint32_t offset)
     }
   }
   if (loopEndTicks < 0 && events.size()) {
-    loopEndTicks = events.back().timestamp;
+    auto last = events.back();
+    loopEndTicks = last.timestamp;
+    if (last.cmd < 0x80) {
+      loopEndTicks += last.param2;
+    }
   }
   trackEndIndex = events.size() - 1;
 }
@@ -260,9 +257,16 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
   if (i >= events.size()) {
     return nullptr;
   }
+  if (!didInitInstrument) {
+    SetInstrumentEvent* e = new SetInstrumentEvent(&inst);
+    e->timestamp = 0;
+    didInitInstrument = true;
+    --i;
+    return e;
+  }
   const RSEQTrack::RSEQEvent& event = events.at(i);
   double timestamp = seqFile->ticksToTimestamp(event.timestamp + loopCount * (loopEndTicks - loopStartTicks));
-  //std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << loopEndIndex << ") " << timestamp << " " << event << std::endl;
+  // std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << event.timestamp << ") " << timestamp << " " << event << std::endl;
   if (event.cmd == RSEQCmd::Goto) {
     int j = findEvent(event.param1);
     if (j < 0) {
@@ -272,7 +276,6 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
     i = j - 1;
     return nullptr;
   } else if (event.cmd == RSEQCmd::LoopStart) {
-    std::cerr << event.offset << " loop start " << event.param1 << std::endl;
     loopStack.emplace_back(i, event.param1);
     return nullptr;
   } else if (event.cmd == RSEQCmd::LoopEnd) {
@@ -310,11 +313,25 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
   } else if (event.cmd == RSEQCmd::Pan) {
     ChannelEvent* e = new ChannelEvent(AudioNode::Pan, event.param1 / 128.0);
     e->timestamp = timestamp;
+    double current = inst.pan.valueAt(timestamp);
+    inst.pan = event.param1 / 128.0;
+    for (const auto& prefix : event.prefix) {
+      if (prefix.cmd == RSEQCmd::PrefixTime) {
+        double end = seqFile->ticksToTimestamp(event.timestamp + prefix.param1 + loopCount * (loopEndTicks - loopStartTicks));
+        e->transition = AudioParam::Linear;
+        e->transitionDuration = end - timestamp;
+        inst.pan.startLevel = current;
+        inst.pan.startTime = timestamp;
+        inst.pan.endTime = end;
+      }
+      // TODO: other prefixes
+    }
     return e;
   } else if (event.cmd == RSEQCmd::Bend) {
     bend = std::int8_t(event.param1) / 127.0;
-    inst.pitchBend = bend * bendRange;
-    ModulatorEvent* e = new ModulatorEvent(Sampler::PitchBend, semitonesToFactor(inst.pitchBend));
+    double total = bend * bendRange;
+    inst.pitchBend = total;
+    ModulatorEvent* e = new ModulatorEvent(Sampler::PitchBend, semitonesToFactor(total));
     e->timestamp = timestamp;
     return e;
   } else if (event.cmd == RSEQCmd::BendRange) {
@@ -337,11 +354,7 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
     double start = timestamp;
     double end = seqFile->ticksToTimestamp(event.timestamp + event.param2 + loopCount * (loopEndTicks - loopStartTicks));
     double duration = end - start;
-    auto e = inst.makeEvent(event.cmd + transpose, event.param1, duration);
-    if (e) {
-      e->timestamp = start;
-    }
-    return e;
+    return inst.makeEvent(start, event.cmd + transpose, event.param1, duration);
   } else if (event.cmd == RSEQCmd::Rest) {
     // ignore, already handled
     return nullptr;

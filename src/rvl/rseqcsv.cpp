@@ -53,12 +53,7 @@ int generateCsv(RSEQFile* file, const std::string& filename)
             }
           }
         }
-        if (eventIndex[i] == 0 && event.cmd == RSEQCmd::Rest) {
-          // Don't output synthetic rest event
-          o << ",\"\"";
-        } else {
-          o << ",\"" << std::hex << std::setw(4) << std::setfill('0') << event.offset << std::dec << ": " << event << "\"";
-        }
+        o << ",\"" << std::hex << std::setw(4) << std::setfill('0') << event.offset << std::dec << ": " << event << "\"";
         do {
           ++idx;
         } while (idx < track->events.size() && !RSEQTrack::parseVerbose && track->events[idx].cmd == RSEQCmd::Rest);

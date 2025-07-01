@@ -15,22 +15,21 @@
 #include <fstream>
 #include <filesystem>
 
-int synth(RSEQFile* file, const std::string& filename) {
+int synth(SynthContext* context, RSEQFile* file, const std::string& filename) {
   file->ctx->purgeSamples();
-  SynthContext context(file->ctx, 44100, 2);
 
   ISequence* seq = file->sequence();
   for (int i = 0; i < seq->numTracks(); i++) {
-    context.addChannel(seq->getTrack(i));
+    context->addChannel(seq->getTrack(i));
   }
 
-  RiffWriter riff(context.sampleRate, true);
+  RiffWriter riff(context->sampleRate, true);
   if (!riff.open(filename)) {
     std::cerr << "Unable to open \"" << filename << "\" for writing" << std::endl;
     return 1;
   }
   std::cout << "Writing " << seq->duration() << " seconds to " << filename << "..." << std::endl;
-  context.save(&riff);
+  context->save(&riff);
   return 0;
 }
 
@@ -106,6 +105,8 @@ int main(int argc, char** argv)
 
   for (const std::string& filename : args.positional()) {
     ClefContext clef;
+    SynthContext synthCtx(&clef, 44100, 2);
+
     std::ifstream is(filename, std::ios::in | std::ios::binary);
     std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));
     bool didSomething = false;
@@ -116,12 +117,8 @@ int main(int argc, char** argv)
       auto seqFile = nw->getFile(sound.fileIndex, false);
       RSEQFile* seq = NWChunk::load<RSEQFile>(seqFile, nullptr, &clef);
 
-      auto bankEntry = nw->info->soundBankEntries[sound.seqData.bankIndex];
-      auto bankFile = nw->getFile(bankEntry.fileIndex, false);
-      std::unique_ptr<RBNKFile> bank(NWChunk::load<RBNKFile>(bankFile, nullptr, &clef));
-      auto audioFile = nw->getFile(bankEntry.fileIndex, true);
-      std::unique_ptr<RWARFile> war(NWChunk::load<RWARFile>(audioFile, nullptr, &clef));
-      seq->loadBank(bank.get(), war.get());
+      std::unique_ptr<RBNKFile> bank;
+      std::unique_ptr<RWARFile> war;
 
       int err;
       std::string outFilename = outPath;
@@ -136,7 +133,13 @@ int main(int argc, char** argv)
       if (args.hasKey("csv")) {
         err = generateCsv(seq, outFilename);
       } else {
-        err = synth(seq, outFilename);
+        auto bankEntry = nw->info->soundBankEntries[sound.seqData.bankIndex];
+        auto bankFile = nw->getFile(bankEntry.fileIndex, false);
+        bank.reset(NWChunk::load<RBNKFile>(bankFile, nullptr, &clef));
+        auto audioFile = nw->getFile(bankEntry.fileIndex, true);
+        war.reset(NWChunk::load<RWARFile>(audioFile, nullptr, &clef));
+        seq->loadBank(&synthCtx, bank.get(), war.get());
+        err = synth(&synthCtx, seq, outFilename);
       }
       if (err) {
         return err;

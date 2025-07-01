@@ -26,6 +26,7 @@ RSEQFile::RSEQFile(std::istream& is, const ChunkInit& init)
       maxLen = len;
     }
   }
+  std::cout << "maxlen " << maxLen << std::endl;
   for (auto& src : tracks) {
     src->maxTimestamp = maxLen;
   }
@@ -45,11 +46,11 @@ ISequence* RSEQFile::sequence()
   return this;
 }
 
-void RSEQFile::loadBank(RBNKFile* bank, RWARFile* war)
+void RSEQFile::loadBank(SynthContext* synth, RBNKFile* bank, RWARFile* war)
 {
   this->bank = bank;
   this->war = war;
   for (auto& track : tracks) {
-    track->inst = NWInstrument(bank, war);
+    track->inst = NWInstrument(synth, bank, war);
   }
 }
