@@ -132,7 +132,7 @@ void RSEQTrack::parse(std::uint32_t offset)
       break;
     } else if (event.cmd == RSEQCmd::AddTrack) {
       RSEQTrack& track = *file->tracks[event.param1].get();
-      //track.tickPos = tickPos;
+      track.tickPos = tickPos;
       track.parse(event.param2);
     } else if (event.cmd == RSEQCmd::Gosub) {
       parserPush(event.param1);
@@ -266,7 +266,7 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
   }
   const RSEQTrack::RSEQEvent& event = events.at(i);
   double timestamp = seqFile->ticksToTimestamp(event.timestamp + loopCount * (loopEndTicks - loopStartTicks));
-  // std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << event.timestamp << ") " << timestamp << " " << event << std::endl;
+  std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << event.timestamp << ") " << timestamp << " " << event << std::endl;
   if (event.cmd == RSEQCmd::Goto) {
     int j = findEvent(event.param1);
     if (j < 0) {
@@ -292,19 +292,19 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
     }
     return nullptr;
   } else if (event.cmd == RSEQCmd::Attack) {
-    inst.attack = event.param1 / 127.0;
+    inst.attack = NWInstrument::attackValue(event.param1);
     return nullptr;
   } else if (event.cmd == RSEQCmd::Hold) {
-    inst.hold = event.param1 / 127.0;
+    inst.hold = NWInstrument::holdValue(event.param1);
     return nullptr;
   } else if (event.cmd == RSEQCmd::Decay) {
-    inst.decay = event.param1 / 127.0;
+    inst.decay = NWInstrument::decayValue(event.param1);
     return nullptr;
   } else if (event.cmd == RSEQCmd::Sustain) {
-    inst.sustain = event.param1 / 127.0;
+    inst.sustain = NWInstrument::sustainValue(event.param1);
     return nullptr;
   } else if (event.cmd == RSEQCmd::Release) {
-    inst.release = event.param1 / 127.0;
+    inst.release = NWInstrument::releaseValue(event.param1);
     return nullptr;
   } else if (event.cmd == RSEQCmd::Volume) {
     ChannelEvent* e = new ChannelEvent(AudioNode::Gain, event.param1 / 127.0);
@@ -332,6 +332,7 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
     double total = bend * bendRange;
     inst.pitchBend = total;
     ModulatorEvent* e = new ModulatorEvent(Sampler::PitchBend, semitonesToFactor(total));
+    e->transitionDuration = 0;
     e->timestamp = timestamp;
     return e;
   } else if (event.cmd == RSEQCmd::BendRange) {

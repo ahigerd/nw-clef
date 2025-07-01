@@ -1,6 +1,7 @@
 #include "clefcontext.h"
 #include "riffwriter.h"
 #include "synth/synthcontext.h"
+#include "synth/iinterpolator.h"
 #include "seq/isequence.h"
 #include "rvl/rsarfile.h"
 #include "rvl/rseqfile.h"
@@ -106,6 +107,7 @@ int main(int argc, char** argv)
   for (const std::string& filename : args.positional()) {
     ClefContext clef;
     SynthContext synthCtx(&clef, 44100, 2);
+    synthCtx.interpolator = IInterpolator::get(IInterpolator::Linear);
 
     std::ifstream is(filename, std::ios::in | std::ios::binary);
     std::unique_ptr<RSARFile> nw(NWChunk::load<RSARFile>(is, nullptr, &clef));

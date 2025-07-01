@@ -35,17 +35,25 @@ struct NWInstrument : public DefaultInstrument
   double attack, hold, decay, sustain, release;
   bool tie;
 
-  BaseNoteEvent* makeEvent(double timestamp, int noteNumber, int velocity, double duration) const;
+  SequenceEvent* makeEvent(double timestamp, int noteNumber, int velocity, double duration);
   //virtual Channel::Note* noteEvent(Channel* channel, std::shared_ptr<BaseNoteEvent> event);
   //virtual void channelEvent(Channel* channel, std::shared_ptr<ChannelEvent> event);
   //virtual void modulatorEvent(Channel* channel, std::shared_ptr<ModulatorEvent> event);
 
   //virtual std::vector<int32_t> supportedChannelParams() const;
 
+  static double attackValue(std::int8_t v);
+  static double holdValue(std::int8_t v);
+  static double decayValue(std::int8_t v);
+  static double sustainValue(std::int8_t v);
+  static double releaseValue(std::int8_t v);
 private:
+
   SynthContext* synth;
   const RBNKFile* bank;
   const RWARFile* war;
+  std::uint64_t lastPlaybackID;
+  double lastPlaybackEnd;
   //BaseOscillator* makeLFO(const LFO& lfo) const;
   //void updatePitchBends(Channel* channel, bool timestamp, bool updateRange = false, double pbrg = 0);
 };
