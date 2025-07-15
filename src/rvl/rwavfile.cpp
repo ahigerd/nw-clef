@@ -88,5 +88,9 @@ SampleData* RWAVFile::sample(std::uint64_t sampleID)
       delete decoded;
     }
   }
+  if (combined && !looped) {
+    combined->loopStart = -1;
+    combined->loopEnd = -1;
+  }
   return combined;
 }
