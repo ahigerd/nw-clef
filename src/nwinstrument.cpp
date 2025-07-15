@@ -4,9 +4,18 @@
 #include "utility.h"
 #include "codec/sampledata.h"
 #include "synth/sampler.h"
+#include "synth/synthcontext.h"
 #include <iomanip>
 
 #define PARAM(name) ((name >= 0) ? name : info->name / 127.0)
+static const double SDAT_TICK = 64.0 * 2728.0 / 33513982;
+static const double SDAT_RES = 723;
+static const double SDAT_SCALE = SDAT_RES * 128;
+
+enum ParamIndexes {
+  I_SampleID,
+  F_PitchBend = 0,
+};
 
 NWInstrument::TimeParam::TimeParam(double value)
 : startLevel(value), startTime(0), endLevel(value), endTime(0)
@@ -74,7 +83,6 @@ SequenceEvent* NWInstrument::makeEvent(double timestamp, int noteNumber, int vel
   }
 
   if (tie && lastPlaybackEnd >= timestamp) {
-    // std::cerr << int(noteNumber) << " tie " << pitchBend.valueAt(timestamp) << std::endl;
     NoteUpdateEvent* event = new NoteUpdateEvent(lastPlaybackID);
     event->params[Sampler::Pitch] = semitonesToFactor(noteNumber - info->baseNote);
     event->params[AudioNode::Gain] = velocity / 127.0;
@@ -84,12 +92,12 @@ SequenceEvent* NWInstrument::makeEvent(double timestamp, int noteNumber, int vel
     return event;
   }
 
-  SampleEvent* event = new SampleEvent();
+  InstrumentNoteEvent* event = new InstrumentNoteEvent;
   event->timestamp = timestamp;
   event->duration = duration;
-  event->sampleID = sample->sampleID;
-  event->pitchBend = semitonesToFactor(noteNumber - info->baseNote);
-  event->modPitchBend = semitonesToFactor(pitchBend.valueAt(timestamp));
+  event->pitch = semitonesToFactor(noteNumber - info->baseNote);
+  event->intParams.push_back(sample->sampleID);
+  event->floatParams.push_back(semitonesToFactor(pitchBend.valueAt(timestamp)));
   event->volume = (velocity / 127.0);
 
   double a = attack < 0 ? attackValue(info->attack) : attack;
@@ -104,10 +112,8 @@ SequenceEvent* NWInstrument::makeEvent(double timestamp, int noteNumber, int vel
   if (r < 0) r = 0;
   d = d * (1 - s);
   r = r * s;
-  // std::cerr << int(noteNumber) << " ENV: " << a << " " << h << " " << d << " " << s << " " << r << "\t" << pitchBend.valueAt(timestamp) << std::endl;
-  // TODO: units
   event->setEnvelope(a, h, d, s, r);
-  //event->setEnvelope(1.0 - PARAM(attack), 1.0 - PARAM(hold), PARAM(decay), PARAM(sustain), 1.0 - PARAM(release));
+
   if (velocity > 0) {
     lastPlaybackID = event->playbackID;
     if (duration > 0) {
@@ -120,7 +126,6 @@ SequenceEvent* NWInstrument::makeEvent(double timestamp, int noteNumber, int vel
   return event;
 }
 
-/*
 Channel::Note* NWInstrument::noteEvent(Channel* channel, std::shared_ptr<BaseNoteEvent> event)
 {
   auto noteEvent = InstrumentNoteEvent::castShared(event);
@@ -128,34 +133,102 @@ Channel::Note* NWInstrument::noteEvent(Channel* channel, std::shared_ptr<BaseNot
     return DefaultInstrument::noteEvent(channel, event);
   }
 
-  auto sd = bank->getSample(program, event->pitch, event->volume);
-  if (!sd) {
-    return nullptr;
+  SampleData* sampleData = bank->ctx->getSample(noteEvent->intParams[I_SampleID]);
+  double pitchBend = noteEvent->floatParams[F_PitchBend];
+  double duration = event->duration;
+
+  Sampler* samp = new Sampler(channel->ctx, sampleData, noteEvent->pitch, pitchBend);
+  samp->param(AudioNode::Gain)->setConstant(noteEvent->volume);
+  samp->param(AudioNode::Pan)->setConstant(noteEvent->pan);
+  if (!duration) {
+    duration = sampleData->duration();
   }
 
-  SampleEvent* newEvent = new SampleEvent();
-  newEvent->duration = event->duration;
-  newEvent->volume = (volume < 0 ?
+  int attack = int(event->attack);
+  DiscreteEnvelope::Step startGain = attackStep(attack, 0, SDAT_SCALE);
+  DiscreteEnvelope* env = new DiscreteEnvelope(channel->ctx, startGain.nextVolume, startGain.userData);
+  if (event->attack < 127) {
+    env->addPhase([attack](double last, double user) { return attackStep(attack, last, user); });
+  }
+  if (event->hold > 0) {
+    double hold = event->hold;
+    env->addPhase([hold](double last, double user) { return holdStep(hold, last, user); });
+  }
+  double decay = event->decay;
+  double sustain = event->sustain;
+  env->addPhase([decay, sustain](double last, double user) { return decayStep(decay, sustain, last, user); });
+  env->addPhase(sustainStep);
+  if (event->release > 0) {
+    double release = event->release;
+    env->setReleasePhase([release](double last, double user) { return decayStep(release, -SDAT_SCALE, last, user); });
+  }
 
+  env->connect(std::shared_ptr<AudioNode>(samp), true);
 
-  return nullptr;
+  Channel::Note* note = channel->allocNote(event, samp, duration);
+
+  return note;
 }
-*/
+
+double NWInstrument::scaleVolume(int v)
+{
+  static const double base = std::log(4096) / SDAT_SCALE;
+  return fastExp(base * v);
+}
+
+DiscreteEnvelope::Step NWInstrument::attackStep(int attack, double last, double user)
+{
+  int32_t v = -((-int(user) * attack) >> 8);
+
+  double volume = scaleVolume(v);
+  return { volume, SDAT_TICK, v == 0, double(v) };
+}
+
+DiscreteEnvelope::Step NWInstrument::holdStep(double hold, double last, double user)
+{
+  // TODO: units
+  return { last, hold, true, user };
+}
+
+DiscreteEnvelope::Step NWInstrument::decayStep(double decay, double sustain, double last, double user)
+{
+  double next = user - decay;
+  bool finished = (next <= sustain);
+  if (finished) {
+    next = sustain;
+  }
+  return { scaleVolume(next), SDAT_TICK, finished, next };
+}
+
+DiscreteEnvelope::Step NWInstrument::sustainStep(double last, double user)
+{
+  return { last, HUGE_VAL, false, user };
+}
 
 double NWInstrument::attackValue(std::int8_t v)
 {
-  // TODO: values over 0x6D scale differently
-  return 1 - (v / 127.0);
+  static std::uint8_t lut[] = {
+    0x00, 0x01, 0x05, 0x0E, 0x1A, 0x26, 0x33, 0x3F, 0x49, 0x54,
+    0x5C, 0x64, 0x6D, 0x74, 0x7B, 0x7F, 0x84, 0x89, 0x8F,
+  };
+  if (v > 127) {
+    return 0;
+  } else if (v > 0x06d) {
+    return lut[0x7f - v];
+  } else {
+    return 0xff - v;
+  }
 }
 
 double NWInstrument::holdValue(std::int8_t v)
 {
   // TODO: dummy implementation
-  return 1 - attackValue(v);
+  return v * SDAT_TICK;
 }
 
 double NWInstrument::decayValue(std::int8_t v)
 {
+  /*
   if (v < 0) {
     return -1;
   } else if (v >= 0x7F) {
@@ -167,12 +240,27 @@ double NWInstrument::decayValue(std::int8_t v)
   } else {
     return 482.0 / (v * 2 + 1);
   }
+  */
+  if (v == 127) {
+    return 0xFFFF;
+  } else if (v == 126) {
+    return 0x3C00;
+  } else if (v < 50) {
+    return std::uint16_t(v * 2 + 1);
+  } else {
+    return std::uint16_t(0x1E00 / (126 - v));
+  }
 }
 
 double NWInstrument::sustainValue(std::int8_t v)
 {
-  // TODO: dummy implementation;
-  return v / 127.0;
+  if (v == 0) {
+    return -32768;
+  } else if (v == 1) {
+    return -722;
+  } else {
+    return int(173.7255 * std::log(double(v)) - 842);
+  }
 }
 
 double NWInstrument::releaseValue(std::int8_t v)

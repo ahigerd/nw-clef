@@ -16,6 +16,9 @@
 #include <fstream>
 #include <filesystem>
 
+#include "discreteenvelope.h"
+#include "nwinstrument.h"
+
 int synth(SynthContext* context, RSEQFile* file, const std::string& filename) {
   file->ctx->purgeSamples();
 

@@ -266,7 +266,7 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
   }
   const RSEQTrack::RSEQEvent& event = events.at(i);
   double timestamp = seqFile->ticksToTimestamp(event.timestamp + loopCount * (loopEndTicks - loopStartTicks));
-  std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << event.timestamp << ") " << timestamp << " " << event << std::endl;
+  //std::cerr << trackIndex << ":" << i << " (" << playbackIndex << " / " << loopCount << " / " << event.timestamp << ") " << timestamp << " " << event << std::endl;
   if (event.cmd == RSEQCmd::Goto) {
     int j = findEvent(event.param1);
     if (j < 0) {
