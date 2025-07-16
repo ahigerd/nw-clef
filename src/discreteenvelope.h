@@ -23,8 +23,8 @@ public:
   void addPhase(PhaseFn phase);
   void setReleasePhase(PhaseFn phase);
 
-  virtual int16_t filterSample(double time, int channel, int16_t sample);
 protected:
+  virtual int16_t filterSample(double time, int channel, int16_t sample);
 
   double lastLevel;
   double stepAt, stepVolume;
@@ -32,6 +32,7 @@ protected:
   int step;
   std::vector<PhaseFn> phases;
   PhaseFn releasePhase;
+  bool allDone;
 };
 
 #endif

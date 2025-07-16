@@ -8,9 +8,10 @@
 #include <iomanip>
 
 #define PARAM(name) ((name >= 0) ? name : info->name / 127.0)
-static const double SDAT_TICK = 64.0 * 2728.0 / 33513982;
-static const double SDAT_RES = 723;
-static const double SDAT_SCALE = SDAT_RES * 128;
+static constexpr double SDAT_TICK = 64.0 * 2728.0 / 33513982;
+static constexpr double RSEQ_TICK = 1.0 / 192.0;
+static constexpr double SDAT_RES = 723;
+static constexpr double SDAT_SCALE = SDAT_RES * 128;
 
 enum ParamIndexes {
   I_SampleID,
@@ -105,13 +106,11 @@ SequenceEvent* NWInstrument::makeEvent(double timestamp, int noteNumber, int vel
   double d = decay < 0 ? decayValue(info->decay) : decay;
   double s = sustain < 0 ? sustainValue(info->sustain) : sustain;
   double r = release < 0 ? releaseValue(info->release) : release;
-  if (a < 0) a = 0;
-  if (h < 0) h = 0;
-  if (d < 0) d = 0;
-  if (s < 0) s = 1;
-  if (r < 0) r = 0;
-  d = d * (1 - s);
-  r = r * s;
+  if (a < 0) a = attackValue(0);
+  if (h < 0) h = holdValue(0);
+  if (d < 0) d = decayValue(0);
+  if (s < 0) s = sustainValue(1);
+  if (r < 0) r = releaseValue(0);
   event->setEnvelope(a, h, d, s, r);
 
   if (velocity > 0) {
@@ -132,6 +131,9 @@ Channel::Note* NWInstrument::noteEvent(Channel* channel, std::shared_ptr<BaseNot
   if (!noteEvent) {
     return DefaultInstrument::noteEvent(channel, event);
   }
+  if (channel->gain->valueAt(event->timestamp) == 0) {
+    return nullptr;
+  }
 
   SampleData* sampleData = bank->ctx->getSample(noteEvent->intParams[I_SampleID]);
   double pitchBend = noteEvent->floatParams[F_PitchBend];
@@ -145,34 +147,32 @@ Channel::Note* NWInstrument::noteEvent(Channel* channel, std::shared_ptr<BaseNot
   }
 
   int attack = int(event->attack);
-  DiscreteEnvelope::Step startGain = attackStep(attack, 0, SDAT_SCALE);
+  DiscreteEnvelope::Step startGain = attackStep(attack, 0, -SDAT_SCALE);
   DiscreteEnvelope* env = new DiscreteEnvelope(channel->ctx, startGain.nextVolume, startGain.userData);
-  if (event->attack < 127) {
-    env->addPhase([attack](double last, double user) { return attackStep(attack, last, user); });
-  }
+
+  env->addPhase([attack](double last, double user) { return attackStep(attack, last, user); });
+
   if (event->hold > 0) {
     double hold = event->hold;
     env->addPhase([hold](double last, double user) { return holdStep(hold, last, user); });
   }
+
   double decay = event->decay;
   double sustain = event->sustain;
   env->addPhase([decay, sustain](double last, double user) { return decayStep(decay, sustain, last, user); });
   env->addPhase(sustainStep);
-  if (event->release > 0) {
-    double release = event->release;
-    env->setReleasePhase([release](double last, double user) { return decayStep(release, -SDAT_SCALE, last, user); });
-  }
+
+  double release = event->release;
+  env->setReleasePhase([release](double last, double user) { return decayStep(release, -SDAT_SCALE, last, user); });
 
   env->connect(std::shared_ptr<AudioNode>(samp), true);
 
-  Channel::Note* note = channel->allocNote(event, samp, duration);
-
-  return note;
+  return channel->allocNote(event, env, duration);
 }
 
 double NWInstrument::scaleVolume(int v)
 {
-  static const double base = std::log(4096) / SDAT_SCALE;
+  constexpr double base = std::log(4096) / SDAT_SCALE;
   return fastExp(base * v);
 }
 
@@ -207,7 +207,7 @@ DiscreteEnvelope::Step NWInstrument::sustainStep(double last, double user)
 
 double NWInstrument::attackValue(std::int8_t v)
 {
-  static std::uint8_t lut[] = {
+  constexpr std::uint8_t lut[] = {
     0x00, 0x01, 0x05, 0x0E, 0x1A, 0x26, 0x33, 0x3F, 0x49, 0x54,
     0x5C, 0x64, 0x6D, 0x74, 0x7B, 0x7F, 0x84, 0x89, 0x8F,
   };
@@ -228,27 +228,14 @@ double NWInstrument::holdValue(std::int8_t v)
 
 double NWInstrument::decayValue(std::int8_t v)
 {
-  /*
-  if (v < 0) {
-    return -1;
-  } else if (v >= 0x7F) {
-    return 0.001;
-  } else if (v == 0x7E) {
-    return 482.0 / 15360.0;
-  } else if (v >= 0x32) {
-    return 482.0 / (7680.0 / (0x7E - v));
-  } else {
-    return 482.0 / (v * 2 + 1);
-  }
-  */
   if (v == 127) {
-    return 0xFFFF;
+    return 65535;
   } else if (v == 126) {
-    return 0x3C00;
-  } else if (v < 50) {
-    return std::uint16_t(v * 2 + 1);
+    return 15360;
+  } else if (v >= 50) {
+    return 7680 / (126 - v);
   } else {
-    return std::uint16_t(0x1E00 / (126 - v));
+    return v * 2 + 1;
   }
 }
 

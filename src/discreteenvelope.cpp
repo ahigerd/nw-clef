@@ -4,15 +4,14 @@
 
 DiscreteEnvelope::DiscreteEnvelope(const SynthContext* ctx, double startLevel, double startUser)
 : FilterNode(ctx), lastLevel(startLevel), stepAt(0), stepVolume(startLevel),
-  currentStep({ startLevel, 0, false, startUser }), step(0)
+  currentStep({ startLevel, 0, false, startUser }), step(0), allDone(false)
 {
   // initializers only
-  addParam(Trigger, 1);
 }
 
 bool DiscreteEnvelope::isActive() const
 {
-  return (step != 0 || !currentStep.finished) && FilterNode::isActive();
+  return !allDone && FilterNode::isActive();
 }
 
 void DiscreteEnvelope::addPhase(PhaseFn phase)
@@ -41,12 +40,14 @@ int16_t DiscreteEnvelope::filterSample(double time, int channel, int16_t sample)
       ++step;
     }
     if ((step == 0 && shouldStep && currentStep.finished) || step >= (int)phases.size()) {
+      allDone = true;
       return 0;
     }
     const PhaseFn& phase = step < 0 ? releasePhase : phases[step];
     if (!phase) {
       step = 0;
       currentStep.finished = true;
+      allDone = true;
       return 0;
     }
     if (shouldStep) {
