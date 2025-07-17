@@ -258,6 +258,7 @@ SequenceEvent* RSEQTrack::translateEvent(std::int32_t& i, int loopCount)
     return nullptr;
   }
   if (!didInitInstrument) {
+    inst.trackIndex = trackIndex;
     SetInstrumentEvent* e = new SetInstrumentEvent(&inst);
     e->timestamp = 0;
     didInitInstrument = true;

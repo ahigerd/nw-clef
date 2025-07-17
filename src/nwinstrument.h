@@ -29,6 +29,7 @@ struct NWInstrument : public DefaultInstrument
     double endTime;
   };
 
+  int trackIndex = 0;
   int program;
   double volume;
   TimeParam pan;

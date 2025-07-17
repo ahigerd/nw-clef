@@ -4,6 +4,7 @@
 #include "nwfile.h"
 
 class SampleData;
+class RWAVFile;
 
 class RWARFile : public NWFile
 {
@@ -16,6 +17,7 @@ public:
   virtual viewstream getFile(int index, bool audio) const override;
   inline int numSamples() const { return entries.size(); }
   SampleData* getSample(int index) const;
+  RWAVFile* getRWAV(int index) const;
 
 private:
   struct Entry {

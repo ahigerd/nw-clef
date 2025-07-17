@@ -25,12 +25,20 @@ viewstream RWARFile::getFile(int index, bool) const
   return viewstream(start, start + entry.size);
 }
 
-SampleData* RWARFile::getSample(int index) const
+RWAVFile* RWARFile::getRWAV(int index) const
 {
   if (index < 0 || index >= entries.size()) {
     return nullptr;
   }
   viewstream stream(getFile(index, true));
-  RWAVFile* rwav = NWChunk::load<RWAVFile>(stream, nullptr, ctx);
+  return NWChunk::load<RWAVFile>(stream, nullptr, ctx);
+}
+
+SampleData* RWARFile::getSample(int index) const
+{
+  std::unique_ptr<RWAVFile> rwav(getRWAV(index));
+  if (!rwav) {
+    return nullptr;
+  }
   return rwav->sample(index);
 }

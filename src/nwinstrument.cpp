@@ -131,9 +131,6 @@ Channel::Note* NWInstrument::noteEvent(Channel* channel, std::shared_ptr<BaseNot
   if (!noteEvent) {
     return DefaultInstrument::noteEvent(channel, event);
   }
-  if (channel->gain->valueAt(event->timestamp) == 0) {
-    return nullptr;
-  }
 
   SampleData* sampleData = bank->ctx->getSample(noteEvent->intParams[I_SampleID]);
   double pitchBend = noteEvent->floatParams[F_PitchBend];
@@ -150,16 +147,20 @@ Channel::Note* NWInstrument::noteEvent(Channel* channel, std::shared_ptr<BaseNot
   DiscreteEnvelope::Step startGain = attackStep(attack, 0, -SDAT_SCALE);
   DiscreteEnvelope* env = new DiscreteEnvelope(channel->ctx, startGain.nextVolume, startGain.userData);
 
-  env->addPhase([attack](double last, double user) { return attackStep(attack, last, user); });
+  if (event->attack < 127) {
+    env->addPhase([attack](double last, double user) { return attackStep(attack, last, user); });
+  }
 
   if (event->hold > 0) {
     double hold = event->hold;
     env->addPhase([hold](double last, double user) { return holdStep(hold, last, user); });
   }
 
-  double decay = event->decay;
   double sustain = event->sustain;
-  env->addPhase([decay, sustain](double last, double user) { return decayStep(decay, sustain, last, user); });
+  if (event->sustain < 127) {
+    double decay = event->decay;
+    env->addPhase([decay, sustain](double last, double user) { return decayStep(decay, sustain, last, user); });
+  }
   env->addPhase(sustainStep);
 
   double release = event->release;
@@ -173,6 +174,9 @@ Channel::Note* NWInstrument::noteEvent(Channel* channel, std::shared_ptr<BaseNot
 double NWInstrument::scaleVolume(int v)
 {
   constexpr double base = std::log(4096) / SDAT_SCALE;
+  if (v <= -SDAT_SCALE) {
+    return 0;
+  }
   return fastExp(base * v);
 }
 

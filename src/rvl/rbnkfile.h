@@ -39,7 +39,6 @@ public:
 
   void registerInstruments(SynthContext* synth, RWARFile* war);
 
-private:
   struct VelSplit {
     std::uint8_t minVel;
     std::uint8_t maxVel;
@@ -58,6 +57,7 @@ private:
 
   std::vector<Program> programs;
 
+private:
   static std::vector<VelSplit> readVelSplits(NWChunk* data, DataRef ref);
   static std::vector<KeySplit> readKeySplits(NWChunk* data, DataRef ref);
 };

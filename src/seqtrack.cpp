@@ -19,7 +19,6 @@ SEQTrack::SEQTrack(SEQFile* file, NWChunk* chunk, int trackIndex)
   maxTimestamp(-1)
 {
   // initializers only
-  finishedOnce = false;
 }
 
 std::uint8_t SEQTrack::readByte()

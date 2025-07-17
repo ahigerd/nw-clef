@@ -88,6 +88,10 @@ GroupEntry::GroupEntry(NWChunk* file, int offset)
   audioOffset(file->parseU32(offset + 0x18)),
   audioSize(file->parseU32(offset + 0x1C))
 {
+  if (pathRef && pathRef.isOffset) {
+    externalPath = file->parseCString(pathRef.pointer);
+  }
+
   auto itemsRef = file->parseDataRef(offset + 0x20);
   file->readDataRefTable(itemsRef.pointer, items);
 }

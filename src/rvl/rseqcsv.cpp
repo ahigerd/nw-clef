@@ -19,7 +19,7 @@ int generateCsv(RSEQFile* file, const std::string& filename)
   std::vector<RSEQTrack*> tracks;
   std::vector<int> eventIndex;
 
-  o << "\"Ticks\"";
+  o << "\"Ticks\",\"Time\"";
   for (int i = 0; i < 16; i++) {
     RSEQTrack* track = dynamic_cast<RSEQTrack*>(seq->getTrack(i));
     if (track && track->events.size()) {
@@ -34,7 +34,10 @@ int generateCsv(RSEQFile* file, const std::string& filename)
   int unfinished = numTracks;
   while (unfinished > 0 && now != 0xFFFFFFFF) {
     unfinished = 0;
-    o << now;
+    double timestamp = file->ticksToTimestamp(now);
+    int minutes = timestamp / 60;
+    double seconds = timestamp - minutes * 60;
+    o << now << ",\"" << minutes << ":" << std::fixed << std::setfill('0') << std::setw(4) << std::setprecision(1) << seconds << "\"";
     for (int i = 0; i < numTracks; i++) {
       RSEQTrack* track = tracks[i];
       int& idx = eventIndex[i];

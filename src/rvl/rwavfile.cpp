@@ -79,6 +79,8 @@ SampleData* RWAVFile::sample(std::uint64_t sampleID)
         dataLength *= 2;
       }
       decoded = codec.decodeRange(begin, begin + dataLength, setSampleID);
+      decoded->loopStart = loopStart;
+      decoded->loopEnd = loopEnd;
     }
     if (!combined) {
       combined = decoded;

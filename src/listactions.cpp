@@ -2,6 +2,8 @@
 #include "commandargs.h"
 #include "clefcontext.h"
 #include "rvl/rsarfile.h"
+#include "rvl/rwarfile.h"
+#include "rvl/rwavfile.h"
 #include "rvl/rseqfile.h"
 #include "rvl/infochunk.h"
 #include <iostream>
@@ -158,6 +160,40 @@ static ListResult listFiles(RSARFile* nw, const Glob& glob)
       ss << "nameless_file#" << index;
       rv.matches.push_back(ss.str());
     }
+
+    if (file.mainSize) {
+      auto data = nw->getFile(index, false);
+      char magic[5] = "\0\0\0\0";
+      data.read(magic, 4);
+      bool isValid = data.gcount() == 4;
+      for (int i = 0; i < 4 && isValid; i++) {
+        if (magic[i] < 'A' || magic[i] > 'Z') {
+          isValid = false;
+        }
+      }
+      if (isValid) {
+        rv.matches.push_back("\tMain Type: " + std::string(magic, 4));
+      } else {
+        rv.matches.push_back("\tMain Type: unknown");
+      }
+    }
+
+    if (file.audioSize) {
+      auto data = nw->getFile(index, true);
+      char magic[5] = "\0\0\0\0";
+      data.read(magic, 4);
+      bool isValid = data.gcount() == 4;
+      for (int i = 0; i < 4 && isValid; i++) {
+        if (magic[i] < 'A' || magic[i] > 'Z') {
+          isValid = false;
+        }
+      }
+      if (isValid) {
+        rv.matches.push_back("\tAudio Type: " + std::string(magic, 4));
+      } else {
+        rv.matches.push_back("\tAudio Type: unknown");
+      }
+    }
   }
   return rv;
 }
@@ -169,6 +205,10 @@ static ListResult listGroups(RSARFile* nw, const Glob& glob)
     std::string match = (group.name.size() ? group.name : "nameless_group") +
       " (" + std::to_string(group.items.size()) + " items)";
     rv.matches.push_back(match);
+
+    if (group.pathRef) {
+      rv.matches.push_back("\tExternal file: " + group.externalPath);
+    }
   }
   return rv;
 }
@@ -186,14 +226,75 @@ static ListResult listBanks(RSARFile* nw, const Glob& glob)
 {
   ListResult rv("Banks", "banks");
   for (auto bank : nw->info->soundBankEntries) {
+    if (!glob.match(bank.name)) {
+      continue;
+    }
     std::string bankFile;
+    bool hasFile = false;
     if (bank.fileIndex >= 0 && nw->info->fileEntries.size() > bank.fileIndex) {
+      hasFile = true;
+      const auto& file = nw->info->fileEntries[bank.fileIndex];
       bankFile = nw->info->fileEntries[bank.fileIndex].name;
       if (bankFile.size()) {
         bankFile = " (in " + bankFile + ")";
       }
     }
     rv.matches.push_back(bank.name + bankFile);
+    if (RSEQTrack::parseVerbose && hasFile) {
+      auto file = nw->getFile(bank.fileIndex, false);
+      std::unique_ptr<RBNKFile> b(NWChunk::load<RBNKFile>(file, nullptr, nw->ctx));
+      auto audioFile = nw->getFile(bank.fileIndex, true);
+      std::unique_ptr<RWARFile> war;
+      try {
+        war.reset(NWChunk::load<RWARFile>(audioFile, nullptr, nw->ctx));
+      } catch (...) {
+        // ignore
+      }
+      int numProgs = b->programs.size();
+      for (int i = 0; i < numProgs; i++) {
+        rv.matches.push_back("\tProgram " + std::to_string(i) + ":");
+        const auto& prog = b->programs[i];
+        for (const auto& ks : prog.keySplits) {
+          for (const auto& vs : ks.velSplits) {
+            auto sample = b->programs[i].keySplits[0].velSplits[0].sample;
+            std::ostringstream ss;
+            ss << "\t  Wave " << sample.wave.pointer
+              << " [" << int(ks.minKey) << "-" << int(ks.maxKey) << "]"
+              << " (" << int(vs.minVel) << "-" << int(vs.maxVel) << ")"
+              << " A=" << int(sample.attack)
+              << " H=" << int(sample.hold)
+              << " D=" << int(sample.decay)
+              << " S=" << int(sample.sustain)
+              << " R=" << int(sample.release);
+            rv.matches.push_back(ss.str());
+            if (war) {
+              auto wav = war->getRWAV(sample.wave.pointer);
+              if (wav) {
+                ss.str("");
+                ss << "\t\t ";
+                if (wav->format == RWAVFile::PCM8) {
+                  ss << "PCM8";
+                } else if (wav->format == RWAVFile::ADPCM) {
+                  ss << "ADPCM";
+                } else {
+                  ss << "PCM16";
+                }
+                ss << " " << wav->sampleRate << "Hz " << wav->channels.size() << "ch ";
+                if (wav->looped) {
+                  auto sd = war->getSample(sample.wave.pointer);
+                  if (sd) {
+                    ss << "loop (" << sd->loopStart << "-" << sd->loopEnd <<")";
+                  } else {
+                    ss << " (decoding error)";
+                  }
+                }
+                rv.matches.push_back(ss.str());
+              }
+            }
+          }
+        }
+      }
+    }
   }
   return rv;
 }

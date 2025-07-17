@@ -137,6 +137,7 @@ public:
   std::string name;
   std::uint32_t entryNumber;
   DataRef pathRef;
+  std::string externalPath;
   std::uint32_t fileOffset;
   std::uint32_t fileSize;
   std::uint32_t audioOffset;
